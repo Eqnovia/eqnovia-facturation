@@ -1,0 +1,531 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>Test de génération PDF</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.3/jspdf.plugin.autotable.min.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 800px; margin: 40px auto; padding: 20px; }
+        h1 { color: #1a1a2e; }
+        button { padding: 12px 24px; font-size: 16px; margin: 8px; cursor: pointer; border: none; border-radius: 6px; }
+        .btn-primary { background: #1a1a2e; color: white; }
+        .btn-success { background: #0f766e; color: white; }
+        .btn-warning { background: #eab308; color: black; }
+        pre { background: #f5f5f5; padding: 12px; border-radius: 6px; overflow-x: auto; }
+        .result { margin-top: 20px; padding: 16px; background: #f0fdf4; border: 1px solid #86efac; border-radius: 8px; display: none; }
+        .result.error { background: #fef2f2; border-color: #fca5a5; }
+        .info { background: #eff6ff; border: 1px solid #93c5fd; border-radius: 8px; padding: 16px; margin-bottom: 20px; }
+    </style>
+</head>
+<body>
+    <h1>🧪 Test de génération PDF</h1>
+    
+    <div class="info">
+        <strong>⚠️ Test autonome</strong> — Ce script génère des PDFs avec les mêmes données que l'application, 
+        en utilisant le code de <code>pdf-export.js</code> chargé via <code>&lt;script&gt;</code>.
+    </div>
+
+    <div>
+        <button class="btn-primary" onclick="genererFacture()">📄 Générer une FACTURE de test</button>
+        <button class="btn-success" onclick="genererCommande()">📄 Générer un BON DE COMMANDE de test</button>
+        <button class="btn-warning" onclick="genererLesDeux()">🔄 Générer les DEUX</button>
+    </div>
+
+    <div id="result" class="result"></div>
+
+    <script>
+        // Copie du code de PdfExport depuis pdf-export.js
+        // On inclut les fonctions essentielles pour le test
+
+        // ====== UTILS (mini version) ======
+        const Utils = {
+            formatDate(date) {
+                if (!date) return '';
+                const d = new Date(date);
+                const dd = String(d.getDate()).padStart(2, '0');
+                const mm = String(d.getMonth() + 1).padStart(2, '0');
+                const yyyy = d.getFullYear();
+                return `${dd}/${mm}/${yyyy}`;
+            },
+            formatMoney(amount) {
+                return new Intl.NumberFormat('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(amount) + ' Dhs';
+            },
+            calculateTotals(lignes) {
+                let totalHT = 0, totalTVA = 0;
+                (lignes || []).forEach(l => {
+                    const ht = (l.quantite || 0) * (l.prixUnitaire || 0);
+                    totalHT += ht;
+                    totalTVA += ht * (l.tva || 0) / 100;
+                });
+                return { totalHT, totalTVA, totalTTC: totalHT + totalTVA };
+            }
+        };
+
+        // ====== COMPANY INFO ======
+        const company = {
+            nom: 'Eqnovia',
+            adresse: '20 rue Moussa Bnou Noussair',
+            ville: 'Casablanca',
+            website: 'www.eqnovia.ma',
+            ice: '001445583000022',
+            rc: '236357',
+            if: '40397283',
+            tp: '35546302',
+            capital: '2 000 000 Dhs'
+        };
+
+        // ====== DONNÉES DE TEST ======
+        const testData = {
+            facture: {
+                reference: 'F2026-07-009',
+                date: '2026-07-13',
+                clientNom: 'AKWEL EL JADIDA MOROCCO',
+                clientAdresse: 'Zone industrielle El Jadida, lot. 108',
+                clientVille: '24040 El Jadida',
+                clientIce: '000089736000091',
+                clientRC: '123456',
+                objet: 'Audit énergétique du site AKWEL - règlement de 70% du montant global HT',
+                lignes: [
+                    { designation: 'Audit énergétique du site AKWEL - règlement de 70% du montant global HT', quantite: 1, prixUnitaire: 76720, tva: 20, unite: 'Pièce' }
+                ],
+                totalHT: 76720,
+                totalTVA: 15344,
+                totalTTC: 92064
+            },
+            commande: {
+                reference: 'C2026-06-016',
+                date: '2026-06-25',
+                clientNom: 'H&P PROTECTION',
+                clientAdresse: '77 rue Mohammed Smiha, étg 10 Apt 57',
+                clientVille: 'Casablanca',
+                clientIce: '003630679000061',
+                clientRC: '',
+                objet: '',
+                lignes: [
+                    { designation: 'Gilet Fluo avec logo eqnovia', quantite: 20, prixUnitaire: 45, tva: 20, unite: 'Pièce' },
+                    { designation: 'Casque avec logo eqnovia', quantite: 5, prixUnitaire: 55, tva: 20, unite: 'Pièce' },
+                    { designation: 'Gants de sécurité', quantite: 5, prixUnitaire: 20, tva: 20, unite: 'Pièce' },
+                    { designation: 'Lunette de sécurité', quantite: 5, prixUnitaire: 25, tva: 20, unite: 'Pièce' }
+                ],
+                totalHT: 1400,
+                totalTVA: 280,
+                totalTTC: 1680
+            }
+        };
+
+        // ====== FORMAT NUMBER ======
+        function formatNumber(amount) {
+            return new Intl.NumberFormat('fr-FR', {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2
+            }).format(amount);
+        }
+
+        function getLogoBase64() {
+            try {
+                const stored = localStorage.getItem('eqnovia_logo_base64');
+                if (stored) return stored;
+            } catch(e) {}
+            return null;
+        }
+
+        // ====== GENERATE PDF (copied from pdf-export.js) ======
+        async function generatePDF(docType, data) {
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF({ orientation: 'p', unit: 'mm', format: 'a4', compress: true });
+            const pageWidth = doc.internal.pageSize.getWidth();
+            const pageHeight = doc.internal.pageSize.getHeight();
+            const margin = 18;
+            const contentWidth = pageWidth - 2 * margin;
+            let y = margin;
+
+            // Set PDF metadata
+            doc.setProperties({
+                title: `${docType} - ${data.reference}`,
+                subject: `${docType} - ${data.clientNom || ''}`,
+                author: company.nom,
+                creator: `${company.nom} - Système de Facturation`,
+                keywords: `${docType}, ${data.reference}, ${company.nom}`
+            });
+            doc.setDisplayMode('fullheight', 'continuous');
+
+            // ===== TOP: Logo (left) + Title (right) =====
+            try {
+                const logoBase64 = getLogoBase64();
+                if (logoBase64) {
+                    doc.addImage(logoBase64, 'PNG', margin - 2, y - 7, 45, 15, undefined, 'FAST');
+                }
+            } catch (e) {
+                console.warn('Logo not available, continuing without it');
+            }
+
+            doc.setTextColor(0, 0, 0);
+            doc.setFontSize(22);
+            doc.setFont('helvetica', 'bold');
+            doc.text(docType.toUpperCase(), pageWidth - margin, y + 5, { align: 'right' });
+
+            // (Accent bar removed per user request)
+
+            // ===== TWO-COLUMN: Company (left) + Client (right) =====
+            y += 14;
+
+            const col1X = margin;
+
+            // --- Company Info (left) ---
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(10);
+            doc.setTextColor(0, 0, 0);
+            doc.text(company.nom, col1X, y);
+
+            doc.setFont('helvetica', 'normal');
+            doc.setFontSize(8.5);
+            doc.setTextColor(60, 60, 60);
+            const companyAddrY = y + 4.5;
+            doc.text(company.adresse, col1X, companyAddrY);
+            doc.text(company.ville, col1X, companyAddrY + 4.5);
+            doc.text(`ICE : ${company.ice} / RC : ${company.rc}`, col1X, companyAddrY + 9);
+            doc.text(company.website, col1X, companyAddrY + 13.5);
+
+            const companyEndY = companyAddrY + 14;
+
+            // --- Client Info (right column, aligned to the right) ---
+            const clientRightX = pageWidth - margin;
+
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(10);
+            doc.setTextColor(0, 0, 0);
+            doc.text(data.clientNom || '', clientRightX, y, { align: 'right' });
+
+            doc.setFont('helvetica', 'normal');
+            doc.setFontSize(8.5);
+            doc.setTextColor(60, 60, 60);
+            let clientLineY = y + 4.5;
+            if (data.clientAdresse) {
+                const addrLines = data.clientAdresse.split('\n').filter(l => l.trim());
+                addrLines.forEach((line, idx) => {
+                    doc.text(line, clientRightX, clientLineY + idx * 4.5, { align: 'right' });
+                });
+                clientLineY += addrLines.length * 4.5;
+            }
+            if (data.clientVille) {
+                doc.text(data.clientVille, clientRightX, clientLineY, { align: 'right' });
+                clientLineY += 4.5;
+            }
+            if (data.clientIce) {
+                doc.text(`ICE : ${data.clientIce}`, clientRightX, clientLineY, { align: 'right' });
+                clientLineY += 4.5;
+            }
+            if (data.clientRC) {
+                doc.text(`RC : ${data.clientRC}`, clientRightX, clientLineY, { align: 'right' });
+                clientLineY += 4.5;
+            }
+
+            // ===== DATE & REFERENCE (below the two columns) =====
+            y = Math.max(companyEndY, clientLineY) + 6;
+
+            const dateLabels = {
+                'FACTURE': 'Date de facturation :',
+                'FACTURE PRO FORMA': 'Date de facturation :',
+                'BON DE COMMANDE': 'Date de commande :',
+                'DEVIS': 'Date du devis :',
+                'BON DE LIVRAISON': 'Date de livraison :'
+            };
+            const dateLabel = dateLabels[docType] || 'Date :';
+            doc.setFont('helvetica', 'normal');
+            doc.setFontSize(8.5);
+            doc.setTextColor(60, 60, 60);
+            doc.text(`${dateLabel}  ${data.date}`, col1X, y);
+            doc.text(`Référence :  ${data.reference}`, pageWidth - margin, y, { align: 'right' });
+
+            y += 7;
+
+            // ===== OBJET =====
+            if (data.objet) {
+                doc.setFont('helvetica', 'italic');
+                doc.setFontSize(8.5);
+                doc.setTextColor(60, 60, 60);
+                const objetLines = doc.splitTextToSize(`Objet : ${data.objet}`, contentWidth);
+                objetLines.forEach((line, idx) => {
+                    doc.text(line, col1X, y + idx * 4);
+                });
+                y += objetLines.length * 4 + 4;
+            }
+
+            // ===== "Montants exprimés en Dhs" =====
+            y += 2;
+            doc.setFont('helvetica', 'italic');
+            doc.setFontSize(8);
+            doc.setTextColor(100, 100, 100);
+            doc.text('Montants exprimés en Dhs', pageWidth - margin, y, { align: 'right' });
+
+            y += 6;
+
+            // ===== LINES TABLE (centered via autoTable margins) =====
+            const tableHeader = [
+                { content: 'Désignation', options: { halign: 'left' } },
+                { content: '% TVA', options: { halign: 'center' } },
+                { content: 'Montant TVA', options: { halign: 'right' } },
+                { content: 'Qté', options: { halign: 'center' } },
+                { content: 'Unité', options: { halign: 'center' } },
+                { content: 'Prix unitaire HT', options: { halign: 'right' } },
+                { content: 'Prix total HT', options: { halign: 'right' } }
+            ];
+
+            const tableData = data.lignes.map(line => {
+                const qty = line.quantite || 0;
+                const pu = line.prixUnitaire || 0;
+                const tva = line.tva || 0;
+                const totalHT = qty * pu;
+                const montantTVA = totalHT * tva / 100;
+                return [
+                    line.designation || '',
+                    tva + '%',
+                    formatNumber(montantTVA),
+                    qty,
+                    line.unite || '',
+                    formatNumber(pu),
+                    formatNumber(totalHT)
+                ];
+            });
+
+            // Table centered: add extra left margin to push it toward center
+            const tableMargin = 6;
+
+            doc.autoTable({
+                head: [tableHeader],
+                body: tableData,
+                startY: y,
+                margin: { left: margin + tableMargin / 2, right: margin + tableMargin / 2 },
+                tableWidth: contentWidth - tableMargin,
+                theme: 'grid',
+                tableLineColor: [150, 150, 150],
+                tableLineWidth: 0.4,
+                headStyles: {
+                    fillColor: [248, 248, 250],
+                    textColor: [30, 30, 30],
+                    fontStyle: 'bold',
+                    fontSize: 8,
+                    lineColor: [150, 150, 150],
+                    lineWidth: 0.4,
+                    cellPadding: 3.5
+                },                    bodyStyles: {
+                        fontSize: 8,
+                        textColor: [40, 40, 40],
+                        fillColor: [255, 255, 255],
+                        lineColor: [190, 190, 190],
+                        lineWidth: 0.3,
+                        cellPadding: 3
+                    },
+                    alternateRowStyles: {
+                        fillColor: [242, 244, 248]
+                    },                    columnStyles: {
+                        0: { cellWidth: 'auto' },
+                    1: { cellWidth: 13, halign: 'center' },
+                    2: { cellWidth: 28, halign: 'right' },
+                    3: { cellWidth: 13, halign: 'center' },
+                    4: { cellWidth: 14, halign: 'center' },
+                        5: { cellWidth: 30, halign: 'right' },
+                        6: { cellWidth: 30, halign: 'right' }
+                    }
+            });
+
+            let tableEndY = doc.lastAutoTable.finalY;
+
+            // ===== BOTTOM SECTION: Push totals, bank, and stamp to bottom =====
+            const remaining = pageHeight - tableEndY - 20;
+            const bottomBlockHeight = 100;
+
+            if (remaining < bottomBlockHeight) {
+                doc.addPage();
+                y = margin;
+                tableEndY = margin;
+            }
+
+            y = Math.max(tableEndY + 10, pageHeight - bottomBlockHeight - 18);
+
+            // ===== TOTALS (right-aligned) =====
+            const totalsX = pageWidth - margin - 72;
+            let tvaLabel = 'Total TVA';
+            if (data.totalHT > 0 && data.totalTVA > 0) {
+                const tvaRate = Math.round((data.totalTVA / data.totalHT) * 100);
+                if (tvaRate > 0) {
+                    tvaLabel = `Total TVA à ${tvaRate}%`;
+                }
+            }
+            const totals = [
+                { label: 'Total HT', value: formatNumber(data.totalHT || 0) },
+                { label: tvaLabel, value: formatNumber(data.totalTVA || 0) },
+                { label: 'Total TTC', value: formatNumber(data.totalTTC || 0), bold: true }
+            ];
+
+            // Draw a thin line above totals
+            doc.setDrawColor(150, 150, 150);
+            doc.setLineWidth(0.3);
+            doc.line(totalsX, y - 3, pageWidth - margin, y - 3);
+
+            doc.setFontSize(8.5);
+            totals.forEach((item, idx) => {
+                const rowY = y + idx * 6;
+                if (item.bold) {
+                    doc.setFont('helvetica', 'bold');
+                    doc.setTextColor(0, 0, 0);
+                } else {
+                    doc.setFont('helvetica', 'normal');
+                    doc.setTextColor(60, 60, 60);
+                }
+                doc.text(item.label, totalsX, rowY);
+                doc.text(item.value, totalsX + 70, rowY, { align: 'right' });
+            });
+
+            y += totals.length * 6 + 7;
+
+            // ===== BANK DETAILS (left side, for invoices) =====
+            if (docType === 'FACTURE') {
+                doc.setFont('helvetica', 'bold');
+                doc.setFontSize(8.5);
+                doc.setTextColor(0, 0, 0);
+                doc.text('Coordonnées bancaires :', col1X, y);
+                y += 5;
+
+                doc.setFont('helvetica', 'normal');
+                doc.setFontSize(8.5);
+                doc.setTextColor(60, 60, 60);
+                const bankDetails = {
+                    banque: 'Crédit du Maroc',
+                    beneficiaire: company.nom,
+                    rib: '021 780 0000 177030150208 49'
+                };
+                doc.text(`Banque : ${bankDetails.banque}`, col1X, y);
+                y += 4.5;
+                doc.text(`Bénéficiaire : ${bankDetails.beneficiaire}`, col1X, y);
+                y += 4.5;
+                doc.text(`RIB : ${bankDetails.rib}`, col1X, y);
+                y += 8;
+            }
+
+            // ===== CACHET / STAMP PNG =====
+            if (docType === 'FACTURE' || docType === 'DEVIS' || docType === 'BON DE COMMANDE' || docType === 'BON DE LIVRAISON' || docType === 'FACTURE PRO FORMA') {
+                const stampWidth = 60;
+                const stampHeight = 40;
+                const stampX = (pageWidth - stampWidth) / 2;
+                const footerLineY = (pageHeight - 16) - 3;
+                const stampY = Math.max(y + 5, footerLineY - stampHeight - 8);
+
+                try {
+                    const stampBase64 = (function(){
+                        try { return localStorage.getItem('eqnovia_cache_base64') || null; } catch(e) { return null; }
+                    })();
+                    if (stampBase64) {
+                        doc.addImage(stampBase64, 'PNG', stampX, stampY, stampWidth, stampHeight, undefined, 'FAST');
+                    } else {
+                        doc.setDrawColor(100, 100, 100);
+                        doc.setLineWidth(0.5);
+                        doc.rect(stampX, stampY, stampWidth, stampHeight);
+                        doc.setFont('helvetica', 'bold');
+                        doc.setFontSize(7);
+                        doc.setTextColor(80, 80, 80);
+                        doc.text('CACHET', pageWidth / 2, stampY + stampHeight / 2 + 2, { align: 'center' });
+                    }
+                } catch (e) {}
+
+                y = stampY + stampHeight + 2;
+            }
+
+            // ===== FOOTER =====
+            const footerY = pageHeight - 16;
+            doc.setDrawColor(200, 200, 200);
+            doc.setLineWidth(0.3);
+            doc.line(margin, footerY - 3, pageWidth - margin, footerY - 3);
+
+            doc.setFontSize(7);
+            doc.setTextColor(130, 130, 130);
+            doc.setFont('helvetica', 'normal');
+
+            const footerText = `${company.nom} S.A. - ${company.adresse} ${company.ville} - Capital : ${company.capital} - ICE : ${company.ice} - RC : ${company.rc} - IF : ${company.if} - N° Taxe Professionnelle : ${company.tp}`;
+            const footerLines = doc.splitTextToSize(footerText, contentWidth);
+            footerLines.forEach((line, idx) => {
+                doc.text(line, pageWidth / 2, footerY + idx * 3, { align: 'center' });
+            });
+
+            return doc.output('blob');
+        }
+
+        // ====== GENERATE AND DISPLAY ======
+        function showResult(message, isError = false) {
+            const el = document.getElementById('result');
+            el.style.display = 'block';
+            el.className = 'result' + (isError ? ' error' : '');
+            el.innerHTML = message;
+        }
+
+        async function genererFacture() {
+            try {
+                showResult('⏳ Génération de la facture en cours...');
+                const data = {
+                    reference: testData.facture.reference,
+                    date: Utils.formatDate(testData.facture.date),
+                    clientNom: testData.facture.clientNom,
+                    clientAdresse: testData.facture.clientAdresse,
+                    clientVille: testData.facture.clientVille,
+                    clientIce: testData.facture.clientIce,
+                    clientRC: testData.facture.clientRC,
+                    objet: testData.facture.objet,
+                    lignes: testData.facture.lignes,
+                    totalHT: testData.facture.totalHT,
+                    totalTVA: testData.facture.totalTVA,
+                    totalTTC: testData.facture.totalTTC
+                };
+                const blob = await generatePDF('FACTURE', data);
+                const url = URL.createObjectURL(blob);
+                window.open(url, '_blank');
+                showResult(`
+                    ✅ <strong>Facture ${testData.facture.reference}</strong> générée avec succès !<br>
+                    📄 ${testData.facture.clientNom} — ${Utils.formatMoney(testData.facture.totalTTC)}<br>
+                    <a href="${url}" target="_blank" style="color:#1a1a2e; font-weight:bold;">👁️ Ouvrir le PDF</a>
+                `);
+            } catch(e) {
+                showResult('❌ Erreur : ' + e.message, true);
+                console.error(e);
+            }
+        }
+
+        async function genererCommande() {
+            try {
+                showResult('⏳ Génération du bon de commande en cours...');
+                const data = {
+                    reference: testData.commande.reference,
+                    date: Utils.formatDate(testData.commande.date),
+                    clientNom: testData.commande.clientNom,
+                    clientAdresse: testData.commande.clientAdresse,
+                    clientVille: testData.commande.clientVille,
+                    clientIce: testData.commande.clientIce,
+                    clientRC: testData.commande.clientRC,
+                    objet: testData.commande.objet,
+                    lignes: testData.commande.lignes,
+                    totalHT: testData.commande.totalHT,
+                    totalTVA: testData.commande.totalTVA,
+                    totalTTC: testData.commande.totalTTC
+                };
+                const blob = await generatePDF('BON DE COMMANDE', data);
+                const url = URL.createObjectURL(blob);
+                window.open(url, '_blank');
+                showResult(`
+                    ✅ <strong>Bon de commande ${testData.commande.reference}</strong> généré avec succès !<br>
+                    📄 ${testData.commande.clientNom} — ${Utils.formatMoney(testData.commande.totalTTC)}<br>
+                    <a href="${url}" target="_blank" style="color:#1a1a2e; font-weight:bold;">👁️ Ouvrir le PDF</a>
+                `);
+            } catch(e) {
+                showResult('❌ Erreur : ' + e.message, true);
+                console.error(e);
+            }
+        }
+
+        async function genererLesDeux() {
+            await genererFacture();
+            // Petit délai puis la commande
+            setTimeout(() => genererCommande(), 500);
+        }
+    </script>
+</body>
+</html>

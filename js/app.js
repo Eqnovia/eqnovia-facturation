@@ -1,0 +1,248 @@
+/**
+ * APP - Initialisation, navigation et tableau de bord
+ */
+const App = {
+    currentSection: 'dashboard',
+
+    init() {
+        Modal.init();
+        this.setupNavigation();
+        this.initialiserDonneesDemo();
+        this.afficherTableauBord();
+
+        // Auto-refresh totals on input change (delegated)
+        document.addEventListener('input', (e) => {
+            if (e.target.closest('.line-row') && (e.target.classList.contains('line-qty') || e.target.classList.contains('line-price') || e.target.classList.contains('line-tva'))) {
+                // Find the active document module
+                const modalBody = document.getElementById('modal-body');
+                if (modalBody) {
+                    const form = modalBody.querySelector('form');
+                    if (form) {
+                        const id = form.id;
+                        if (id === 'facture-form' && typeof Factures?.actualiserTotaux === 'function') Factures.actualiserTotaux();
+                        else if (id === 'devis-form' && typeof Devis?.actualiserTotaux === 'function') Devis.actualiserTotaux();
+                        else if (id === 'commande-form' && typeof Commandes?.actualiserTotaux === 'function') Commandes.actualiserTotaux();
+                        else if (id === 'proforma-form' && typeof ProForma?.actualiserTotaux === 'function') ProForma.actualiserTotaux();
+                    }
+                }
+            }
+        });
+
+        // Initialize commande type selector
+        if (document.getElementById('commande-type')) {
+            Commandes.changerType();
+        }
+    },
+
+    setupNavigation() {
+        document.querySelectorAll('.nav-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const section = btn.dataset.section;
+                this.naviguerVers(section);
+            });
+        });
+    },
+
+    naviguerVers(section) {
+        // Update active nav button
+        document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+        document.querySelector(`.nav-btn[data-section="${section}"]`)?.classList.add('active');
+
+        // Show section
+        document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+        document.getElementById(section)?.classList.add('active');
+
+        this.currentSection = section;
+
+        // Refresh data display
+        switch (section) {
+            case 'dashboard': this.afficherTableauBord(); break;
+            case 'factures': Factures.afficher(); break;
+            case 'devis': Devis.afficher(); break;
+            case 'commandes': Commandes.afficher(); break;
+            case 'livraisons': Livraisons.afficher(); break;
+            case 'proforma': ProForma.afficher(); break;
+            case 'clients': Clients.afficher(); break;
+            case 'fournisseurs': Fournisseurs.afficher(); break;
+            case 'produits': Produits.afficher(); break;
+        }
+    },
+
+    afficherTableauBord() {
+        const factures = Database.get(Database.KEYS.FACTURES) || [];
+        const devis = Database.get(Database.KEYS.DEVIS) || [];
+        const commandes = Database.get(Database.KEYS.COMMANDES) || [];
+        const clients = Database.get(Database.KEYS.CLIENTS) || [];
+
+        // Calculate stats
+        const now = new Date();
+        const currentMonth = now.getMonth();
+        const currentYear = now.getFullYear();
+
+        const facturesMois = factures.filter(f => {
+            const d = new Date(f.date);
+            return d.getMonth() === currentMonth && d.getFullYear() === currentYear;
+        });
+
+        const caMois = facturesMois.reduce((sum, f) => sum + (f.totalTTC || 0), 0);
+        const impayees = factures.filter(f => f.statut !== 'Payée').length;
+
+        document.getElementById('stat-factures').textContent = facturesMois.length;
+        document.getElementById('stat-devis').textContent = devis.filter(d => d.statut === 'En attente' || !d.statut).length;
+        document.getElementById('stat-ca').textContent = Utils.formatMoney(caMois);
+        document.getElementById('stat-impayees').textContent = impayees;
+
+        // Recent activity
+        const allDocs = [
+            ...factures.map(d => ({ ...d, type: 'Facture', prefix: '📄' })),
+            ...devis.map(d => ({ ...d, type: 'Devis', prefix: '📋' })),
+            ...commandes.map(d => ({ ...d, type: 'Commande', prefix: '🛒' }))
+        ].sort((a, b) => new Date(b.createdAt || b.date) - new Date(a.createdAt || a.date))
+            .slice(0, 10);
+
+        const recentList = document.getElementById('recent-list');
+        if (allDocs.length === 0) {
+            recentList.innerHTML = '<div class="activity-item">Aucune activité récente</div>';
+            return;
+        }
+
+        recentList.innerHTML = allDocs.map(d => `
+            <div class="activity-item">
+                <span class="activity-icon">${d.prefix}</span>
+                <div class="activity-info">
+                    <strong>${d.type} ${d.reference || ''}</strong>
+                    <span>${Utils.escapeHtml(d.clientNom || '')} - ${Utils.formatMoney(d.totalTTC || 0)}</span>
+                </div>
+                <span class="activity-date">${Utils.formatDate(d.date)}</span>
+            </div>
+        `).join('');
+    },
+
+    initialiserDonneesDemo() {
+        // Add demo data if no data exists
+        const clients = Database.get(Database.KEYS.CLIENTS);
+        if (!clients || clients.length === 0) {
+            Database.add(Database.KEYS.CLIENTS, {
+                nom: 'AKWEL EL JADIDA MOROCCO',
+                adresse: 'Zone industrielle El Jadida, lot. 108',
+                ville: '24040 El Jadida',
+                ice: '000089736000091',
+                telephone: '0523 45 67 89',
+                email: 'contact@akwel.ma',
+                rc: '123456',
+                if: '98765432'
+            });
+
+            Database.add(Database.KEYS.CLIENTS, {
+                nom: 'H&P PROTECTION',
+                adresse: '77 rue Mohammed Smiha, étg 10 Apt 57',
+                ville: 'Casablanca',
+                ice: '003630679000061',
+                telephone: '0522 33 44 55',
+                email: 'info@hpprotection.ma'
+            });
+
+            Database.add(Database.KEYS.FOURNISSEURS, {
+                nom: 'Fournisseur Pro SARL',
+                ice: '001234567890123',
+                adresse: '15 Rue de la Liberté',
+                ville: 'Rabat',
+                telephone: '0537 66 77 88',
+                email: 'contact@fournisseurpro.ma'
+            });
+
+            Database.add(Database.KEYS.PRODUITS, {
+                designation: 'Audit énergétique',
+                reference: 'AUD-001',
+                prixUnitaire: 76720,
+                tva: 20,
+                unite: 'Forfait'
+            });
+
+            Database.add(Database.KEYS.PRODUITS, {
+                designation: 'Gilet Fluo avec logo',
+                reference: 'EPI-001',
+                prixUnitaire: 45,
+                tva: 20,
+                unite: 'Pièce'
+            });
+
+            Database.add(Database.KEYS.PRODUITS, {
+                designation: 'Casque avec logo',
+                reference: 'EPI-002',
+                prixUnitaire: 55,
+                tva: 20,
+                unite: 'Pièce'
+            });
+
+            Database.add(Database.KEYS.PRODUITS, {
+                designation: 'Gants de sécurité',
+                reference: 'EPI-003',
+                prixUnitaire: 20,
+                tva: 20,
+                unite: 'Pièce'
+            });
+
+            Database.add(Database.KEYS.PRODUITS, {
+                designation: 'Lunette de sécurité',
+                reference: 'EPI-004',
+                prixUnitaire: 25,
+                tva: 20,
+                unite: 'Pièce'
+            });
+        }
+
+        const factures = Database.get(Database.KEYS.FACTURES);
+        if (!factures || factures.length === 0) {
+            // Add sample invoice
+            const f = Database.add(Database.KEYS.FACTURES, {
+                clientId: 1,
+                clientNom: 'AKWEL EL JADIDA MOROCCO',
+                clientAdresse: 'Zone industrielle El Jadida, lot. 108',
+                clientVille: '24040 El Jadida',
+                clientIce: '000089736000091',
+                date: '2026-07-13',
+                reference: 'F2026-07-009',
+                objet: 'Audit énergétique du site AKWEL - règlement de 70% du montant global HT',
+                lignes: [{ designation: 'Audit énergétique du site AKWEL - règlement de 70% du montant global HT', quantite: 1, prixUnitaire: 76720, tva: 20, unite: 'Pièce' }],
+                totalHT: 76720,
+                totalTVA: 15344,
+                totalTTC: 92064,
+                statut: 'Impayée'
+            });
+            // Override counter to match example
+            const counters = Database.get(Database.KEYS.COUNTERS);
+            counters.facture = 9;
+            Database.set(Database.KEYS.COUNTERS, counters);
+
+            // Add sample order
+            const c = Database.add(Database.KEYS.COMMANDES, {
+                type: 'client',
+                clientId: 'client_2',
+                clientNom: 'H&P PROTECTION',
+                clientAdresse: '77 rue Mohammed Smiha, étg 10 Apt 57',
+                clientVille: 'Casablanca',
+                clientIce: '003630679000061',
+                date: '2026-06-25',
+                reference: 'C2026-06-016',
+                objet: '',
+                lignes: [
+                    { designation: 'Gilet Fluo avec logo eqnovia', quantite: 20, prixUnitaire: 45, tva: 20, unite: 'Pièce' },
+                    { designation: 'Casque avec logo eqnovia', quantite: 5, prixUnitaire: 55, tva: 20, unite: 'Pièce' },
+                    { designation: 'Gants de sécurité', quantite: 5, prixUnitaire: 20, tva: 20, unite: 'Pièce' },
+                    { designation: 'Lunette de sécurité', quantite: 5, prixUnitaire: 25, tva: 20, unite: 'Pièce' }
+                ],
+                totalHT: 1400,
+                totalTVA: 280,
+                totalTTC: 1680,
+                statut: 'En cours'
+            });
+            const counters2 = Database.get(Database.KEYS.COUNTERS);
+            counters2.commande = 16;
+            Database.set(Database.KEYS.COUNTERS, counters2);
+        }
+    }
+};
+
+// Initialize on DOM ready
+document.addEventListener('DOMContentLoaded', () => App.init());

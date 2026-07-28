@@ -1,0 +1,14 @@
+# Temp files
+cache_base64.txt
+cache_base64.tmp
+cache_b64_clean.txt
+
+# OS files
+Thumbs.db
+.DS_Store
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
