@@ -1,4 +1,204 @@
 /**
+ * FILE STORAGE - Save exported files to local folders on the Desktop
+ * Uses the File System Access API (showDirectoryPicker) + IndexedDB persistence
+ */
+const FileStorage = {
+    _rootHandle: null,
+    _initialized: false,
+
+    // Mapping between document types and subfolder names
+    FOLDER_MAP: {
+        'FACTURE': 'Factures',
+        'DEVIS': 'Devis',
+        'BON DE COMMANDE': 'Commandes',
+        'BON DE LIVRAISON': 'Livraisons',
+        'FACTURE PRO FORMA': 'Factures Pro Forma',
+        'CLIENT': 'Contacts Clients',
+        'FOURNISSEUR': 'Fournisseurs'
+    },
+
+    /**
+     * Initialize: try to load a previously saved directory handle from IndexedDB
+     */
+    async init() {
+        const handle = await this._loadHandle();
+        if (handle) {
+            try {
+                // Verify the handle is still valid
+                const permission = await handle.queryPermission({ mode: 'readwrite' });
+                if (permission === 'granted') {
+                    this._rootHandle = handle;
+                    this._initialized = true;
+                } else {
+                    // Try to request permission again
+                    const result = await handle.requestPermission({ mode: 'readwrite' });
+                    if (result === 'granted') {
+                        this._rootHandle = handle;
+                        this._initialized = true;
+                    }
+                }
+            } catch (e) {
+                console.warn('FileStorage: handle invalide, reconfiguration nécessaire');
+            }
+        }
+        this._updateStatusDot();
+    },
+
+    /**
+     * Open directory picker and let the user select or create the "Facturation Eqnovia" folder
+     */
+    async setupFolder() {
+        if (!window.showDirectoryPicker) {
+            Toast.error('Votre navigateur ne supporte pas la sauvegarde locale. Utilisez Chrome ou Edge.');
+            return false;
+        }
+
+        try {
+            this._rootHandle = await window.showDirectoryPicker({
+                id: 'eqnovia-facturation',
+                mode: 'readwrite',
+                startIn: 'desktop'
+            });
+
+            // Request write permission
+            const permission = await this._rootHandle.queryPermission({ mode: 'readwrite' });
+            if (permission !== 'granted') {
+                const result = await this._rootHandle.requestPermission({ mode: 'readwrite' });
+                if (result !== 'granted') {
+                    Toast.error('Permission refusée pour le dossier');
+                    return false;
+                }
+            }
+
+            // Save the handle for future sessions
+            await this._saveHandle(this._rootHandle);
+            this._initialized = true;
+            this._updateStatusDot();
+            Toast.success('✅ Dossier configuré ! Les fichiers seront sauvegardés automatiquement.');
+            return true;
+        } catch (e) {
+            if (e.name !== 'AbortError' && e.name !== 'SecurityError') {
+                console.error('Erreur configuration dossier:', e);
+                Toast.error('Erreur lors de la configuration du dossier');
+            }
+            return false;
+        }
+    },
+
+    /**
+     * Save a blob (PDF or Excel) to the appropriate subfolder
+     */
+    async saveFile(blob, docType, filename) {
+        if (!this._initialized || !this._rootHandle) {
+            await this.init();
+            if (!this._initialized) return false;
+        }
+
+        try {
+            // Re-verify permission (may have been revoked)
+            const permission = await this._rootHandle.queryPermission({ mode: 'readwrite' });
+            if (permission !== 'granted') {
+                const result = await this._rootHandle.requestPermission({ mode: 'readwrite' });
+                if (result !== 'granted') {
+                    this._initialized = false;
+                    Toast.warning('⚠️ Permission perdue. Reconfigurez le dossier.');
+                    return false;
+                }
+            }
+
+            // Determine the subfolder
+            const folderName = this.FOLDER_MAP[docType];
+            if (!folderName) {
+                console.warn('FileStorage: type de document inconnu:', docType);
+                return false;
+            }
+
+            // Get or create the subfolder
+            let subFolderHandle;
+            try {
+                subFolderHandle = await this._rootHandle.getDirectoryHandle(folderName, { create: true });
+            } catch (e) {
+                console.error('FileStorage: impossible de créer le dossier', folderName, e);
+                return false;
+            }
+
+            // Create the file (overwrite if exists)
+            const fileHandle = await subFolderHandle.getFileHandle(filename, { create: true });
+            const writable = await fileHandle.createWritable({ keepExistingData: false });
+            await writable.write(blob);
+            await writable.close();
+
+            return true;
+        } catch (e) {
+            console.error('FileStorage: erreur sauvegarde fichier:', e);
+            return false;
+        }
+    },
+
+    /**
+     * Check if the storage is configured and ready
+     */
+    isReady() {
+        return this._initialized;
+    },
+
+    /**
+     * Update the status indicator dot in the header
+     */
+    _updateStatusDot() {
+        const dot = document.getElementById('folder-status-dot');
+        if (dot) {
+            dot.className = 'folder-dot ' + (this._initialized ? 'folder-dot-active' : 'folder-dot-inactive');
+            dot.title = this._initialized ? '✅ Dossier configuré - Les PDF sont sauvegardés automatiquement' : '❌ Dossier non configuré';
+        }
+    },
+
+    // ─── IndexedDB persistence ───
+
+    _getDB() {
+        return new Promise((resolve, reject) => {
+            const request = indexedDB.open('EqnoviaFileStorage', 1);
+            request.onupgradeneeded = (e) => {
+                const db = e.target.result;
+                if (!db.objectStoreNames.contains('handles')) {
+                    db.createObjectStore('handles');
+                }
+            };
+            request.onsuccess = (e) => resolve(e.target.result);
+            request.onerror = (e) => reject(e.target.error);
+        });
+    },
+
+    async _saveHandle(handle) {
+        try {
+            const db = await this._getDB();
+            const tx = db.transaction('handles', 'readwrite');
+            tx.objectStore('handles').put(handle, 'rootHandle');
+            return new Promise((resolve, reject) => {
+                tx.oncomplete = () => resolve();
+                tx.onerror = (e) => reject(e.target.error);
+            });
+        } catch (e) {
+            console.warn('FileStorage: impossible de sauvegarder le handle:', e);
+        }
+    },
+
+    async _loadHandle() {
+        try {
+            const db = await this._getDB();
+            const tx = db.transaction('handles', 'readonly');
+            const request = tx.objectStore('handles').get('rootHandle');
+            return new Promise((resolve, reject) => {
+                request.onsuccess = () => resolve(request.result || null);
+                request.onerror = () => resolve(null);
+            });
+        } catch (e) {
+            return null;
+        }
+    }
+};
+
+/**
  * UTILS - Helper functions for formatting, modal, toast, etc.
  */
 const Utils = {
@@ -60,13 +260,31 @@ const Utils = {
 // Modal manager (singleton)
 const Modal = {
     element: null,
+
     init() { this.element = document.getElementById('modal'); },
+
     ouvrir(title, content) {
+        LineHistory.reset();
         document.getElementById('modal-title').textContent = title;
         document.getElementById('modal-body').innerHTML = content;
         this.element.classList.add('active');
+        // Initialize line history after modal renders
+        requestAnimationFrame(() => {
+            if (document.getElementById('lines-container')) {
+                LineHistory.init();
+            }
+        });
     },
-    fermer() { this.element.classList.remove('active'); }
+
+    fermer() {
+        if (LineHistory.isDirty()) {
+            if (!confirm('⚠️ Vous êtes sur le point de fermer cette fenêtre.\n\nLes modifications non enregistrées seront perdues.\n\nÊtes-vous sûr de vouloir continuer ?')) {
+                return;
+            }
+        }
+        LineHistory.reset();
+        this.element.classList.remove('active');
+    }
 };
 
 // Toast notifications manager
@@ -84,4 +302,94 @@ const Toast = {
     error(msg) { this.show(msg, 'error'); },
     warning(msg) { this.show(msg, 'warning'); },
     info(msg) { this.show(msg, 'info'); }
+};
+
+/**
+ * LINE HISTORY - Undo/Redo manager for document line entries
+ * Captures snapshots of the lines-container innerHTML and allows
+ * Ctrl+Z (undo) and Ctrl+Shift+Z (redo) navigation.
+ */
+const LineHistory = {
+    _history: [],
+    _currentIndex: -1,
+    _containerId: 'lines-container',
+
+    init() {
+        this._history = [];
+        this._currentIndex = -1;
+        this.saveState();
+        this._updateButtons();
+    },
+
+    saveState() {
+        const container = document.getElementById(this._containerId);
+        if (!container) return;
+        // Remove any future states (if we undid and now make a new change)
+        this._history = this._history.slice(0, this._currentIndex + 1);
+        this._history.push(container.innerHTML);
+        this._currentIndex = this._history.length - 1;
+        this._updateButtons();
+    },
+
+    undo() {
+        if (this._currentIndex > 0) {
+            this._currentIndex--;
+            this._restore();
+            return true;
+        }
+        return false;
+    },
+
+    redo() {
+        if (this._currentIndex < this._history.length - 1) {
+            this._currentIndex++;
+            this._restore();
+            return true;
+        }
+        return false;
+    },
+
+    _restore() {
+        const container = document.getElementById(this._containerId);
+        if (!container || this._currentIndex < 0 || this._currentIndex >= this._history.length) return;
+        container.innerHTML = this._history[this._currentIndex];
+        this._updateButtons();
+        // Recalculate totals after restoring
+        this._recalcTotals();
+    },
+
+    _recalcTotals() {
+        const form = document.querySelector('form[id$="-form"]');
+        if (form) {
+            const id = form.id;
+            if (id === 'facture-form' && typeof Factures?.actualiserTotaux === 'function') Factures.actualiserTotaux();
+            else if (id === 'devis-form' && typeof Devis?.actualiserTotaux === 'function') Devis.actualiserTotaux();
+            else if (id === 'commande-form' && typeof Commandes?.actualiserTotaux === 'function') Commandes.actualiserTotaux();
+            else if (id === 'proforma-form' && typeof ProForma?.actualiserTotaux === 'function') ProForma.actualiserTotaux();
+        }
+    },
+
+    _updateButtons() {
+        const undoBtns = document.querySelectorAll('.undo-lines-btn');
+        const redoBtns = document.querySelectorAll('.redo-lines-btn');
+        undoBtns.forEach(btn => btn.disabled = !this.canUndo());
+        redoBtns.forEach(btn => btn.disabled = !this.canRedo());
+    },
+
+    canUndo() {
+        return this._currentIndex > 0;
+    },
+
+    canRedo() {
+        return this._currentIndex < this._history.length - 1;
+    },
+
+    isDirty() {
+        return this._history.length > 1;
+    },
+
+    reset() {
+        this._history = [];
+        this._currentIndex = -1;
+    }
 };

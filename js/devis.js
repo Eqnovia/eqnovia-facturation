@@ -104,7 +104,12 @@ const Devis = {
                     <h4>Lignes du devis</h4>
                     <table class="lines-table"><thead><tr><th class="col-designation">Désignation</th><th class="col-tva">TVA</th><th class="col-qty">Qté</th><th class="col-unit">Unité</th><th class="col-price">Prix unit.</th><th class="col-total">Total</th><th class="col-actions"></th></tr></thead>
                         <tbody id="lines-container">${linesHtml}</tbody></table>
-                    <button type="button" class="add-line-btn" onclick="Devis.ajouterLigne()">+ Ajouter une ligne</button>
+                    <div class="lines-toolbar">
+                        <button type="button" class="btn btn-sm btn-outline undo-lines-btn" onclick="LineHistory.undo()" disabled title="Ctrl+Z">↩ Annuler</button>
+                        <button type="button" class="btn btn-sm btn-outline redo-lines-btn" onclick="LineHistory.redo()" disabled title="Ctrl+Shift+Z">↪ Rétablir</button>
+                        <span class="lines-toolbar-spacer"></span>
+                        <button type="button" class="add-line-btn" onclick="Devis.ajouterLigne()">+ Ajouter une ligne</button>
+                    </div>
                 </div>
                 <div class="document-totals"><table class="totals-table"><tr><td class="label">Total HT</td><td class="value" id="total-ht">0,00 Dhs</td></tr><tr><td class="label">Total TVA</td><td class="value" id="total-tva">0,00 Dhs</td></tr><tr><td class="label">Total TTC</td><td class="value total-ttc" id="total-ttc">0,00 Dhs</td></tr></table></div>
                 <div class="form-actions"><button type="submit" class="btn btn-primary">💾 Enregistrer</button><button type="button" class="btn btn-outline" onclick="Modal.fermer()">Annuler</button></div>
@@ -112,6 +117,7 @@ const Devis = {
     },
 
     ajouterLigne() {
+        LineHistory.saveState();
         const container = document.getElementById('lines-container');
         const row = document.createElement('tr'); row.className = 'line-row';
         row.innerHTML = `<td><input type="text" name="designation" class="line-designation" placeholder="Désignation"></td>
@@ -125,7 +131,7 @@ const Devis = {
         this.actualiserTotaux();
     },
 
-    supprimerLigne(btn) { const row = btn.closest('tr'); if (document.querySelectorAll('.line-row').length > 1) { row.remove(); this.actualiserTotaux(); } },
+    supprimerLigne(btn) { const row = btn.closest('tr'); if (document.querySelectorAll('.line-row').length > 1) { LineHistory.saveState(); row.remove(); this.actualiserTotaux(); } },
 
     actualiserTotaux() {
         const rows = document.querySelectorAll('.line-row');
@@ -149,8 +155,11 @@ const Devis = {
         event.preventDefault();
         const form = document.getElementById('devis-form');
         const data = new FormData(form);
-        const clientId = parseInt(data.get('clientId'));
+        const rawClientId = data.get('clientId');
+        const clientId = parseInt(rawClientId);
+        console.log('Sauvegarde devis - rawClientId:', rawClientId, 'type:', typeof rawClientId, 'parsed:', clientId);
         const client = Clients.getById(clientId);
+        console.log('Client trouvé:', client);
         if (!client) return Toast.error('Veuillez sélectionner un client');
 
         const lignes = [];
@@ -176,6 +185,7 @@ const Devis = {
         if (id) { this.modifier(parseInt(id), docData); Toast.success('Devis modifié avec succès'); }
         else { const saved = this.ajouter(docData); Toast.success(`Devis ${saved.reference} créé avec succès`); }
 
+        LineHistory.reset();
         Modal.fermer();
         this.afficher();
         return false;

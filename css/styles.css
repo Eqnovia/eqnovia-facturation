@@ -45,11 +45,73 @@ body {
     box-shadow: var(--shadow);
 }
 
+/* Header top row: logo + actions */
+.header-top {
+    display: flex;
+    align-items: center;
+    margin-bottom: 1rem;
+}
+
+.header-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-left: auto;
+}
+
+.btn-folder {
+    background: rgba(255, 255, 255, 0.15);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    color: white;
+    padding: 0.4rem 1rem;
+    border-radius: var(--radius);
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 0.8rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    transition: all 0.3s ease;
+}
+
+.btn-folder:hover {
+    background: rgba(255, 255, 255, 0.25);
+    border-color: rgba(255, 255, 255, 0.5);
+    transform: translateY(-1px);
+}
+
+.btn-folder:active {
+    transform: translateY(0);
+}
+
+/* Folder status indicator dot */
+.folder-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    display: inline-block;
+    transition: all 0.3s ease;
+    cursor: pointer;
+}
+
+.folder-dot-active {
+    background-color: var(--secondary-color);
+    box-shadow: 0 0 6px rgba(0, 200, 83, 0.6);
+}
+
+.folder-dot-inactive {
+    background-color: #ff6b6b;
+    box-shadow: 0 0 6px rgba(255, 82, 82, 0.4);
+}
+
+.folder-dot:hover {
+    transform: scale(1.3);
+}
+
 .logo {
     display: flex;
     align-items: baseline;
     gap: 1rem;
-    margin-bottom: 1rem;
 }
 
 .logo h1 {
@@ -520,6 +582,39 @@ body {
     border-radius: var(--radius);
     cursor: pointer;
     font-size: 0.9rem;
+}
+
+/* Lines toolbar: undo/redo + add line button */
+.lines-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-top: 0.5rem;
+    padding: 0.5rem;
+    background: var(--bg-color);
+    border-radius: var(--radius);
+    border: 1px solid var(--border-color);
+}
+
+.lines-toolbar .btn-outline {
+    font-size: 0.8rem;
+    padding: 0.4rem 0.7rem;
+}
+
+.lines-toolbar .btn-outline:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+    border-color: #ccc;
+    color: #999;
+}
+
+.lines-toolbar .btn-outline:disabled:hover {
+    background: transparent;
+    color: #999;
+}
+
+.lines-toolbar-spacer {
+    flex: 1;
 }
 
 .remove-line-btn {

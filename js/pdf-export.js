@@ -156,13 +156,13 @@ const PdfExport = {
 
         // ===== LINES TABLE (centered via autoTable margins) =====
         const tableHeader = [
-            { content: 'Désignation', options: { halign: 'left' } },
+            { content: 'Désignation', options: { halign: 'center' } },
             { content: '% TVA', options: { halign: 'center' } },
-            { content: 'Montant TVA', options: { halign: 'right' } },
+            { content: 'Montant TVA', options: { halign: 'center' } },
             { content: 'Qté', options: { halign: 'center' } },
             { content: 'Unité', options: { halign: 'center' } },
-            { content: 'Prix unitaire HT', options: { halign: 'right' } },
-            { content: 'Prix total HT', options: { halign: 'right' } }
+            { content: 'Prix unitaire HT', options: { halign: 'center' } },
+            { content: 'Prix total HT', options: { halign: 'center' } }
         ];
 
         const tableData = data.lines.map(line => {
@@ -215,13 +215,13 @@ const PdfExport = {
                 fillColor: [242, 244, 248]
             },
             columnStyles: {
-                0: { cellWidth: 'auto' },
+                0: { cellWidth: 'auto', halign: 'center' },
                 1: { cellWidth: 13, halign: 'center' },
-                2: { cellWidth: 28, halign: 'right' },
+                2: { cellWidth: 28, halign: 'center' },
                 3: { cellWidth: 13, halign: 'center' },
                 4: { cellWidth: 14, halign: 'center' },
-                5: { cellWidth: 30, halign: 'right' },
-                6: { cellWidth: 30, halign: 'right' }
+                5: { cellWidth: 30, halign: 'center' },
+                6: { cellWidth: 30, halign: 'center' }
             }
         });
 
@@ -351,10 +351,12 @@ const PdfExport = {
     },
 
     /**
-     * Download a PDF document
+     * Download a PDF document and save a copy to the local folder
      */
     async downloadPDF(docType, data, filename) {
         const blob = await this.generatePDF(docType, data);
+        
+        // Trigger browser download IMMEDIATELY (no delay for user)
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
@@ -363,6 +365,14 @@ const PdfExport = {
         a.click();
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
+        
+        // Then save a copy to the local folder in the background
+        if (FileStorage.isReady()) {
+            // Fire-and-forget: doesn't block the user experience
+            FileStorage.saveFile(blob, docType, filename).then(saved => {
+                if (saved) console.log(`PDF sauvegardé dans ${docType}`);
+            }).catch(e => console.warn('Sauvegarde locale échouée:', e));
+        }
     },
 
     /**
@@ -377,7 +387,7 @@ const PdfExport = {
     /**
      * Export data to Excel using SheetJS
      */
-    exportToExcel(data, filename) {
+    async exportToExcel(data, filename) {
         if (typeof XLSX === 'undefined') {
             Toast.error('La bibliothèque Excel (SheetJS) n\'est pas chargée.');
             return;
@@ -403,6 +413,8 @@ const PdfExport = {
         }
 
         const blob = new Blob([s2ab(wbout)], { type: 'application/octet-stream' });
+        
+        // Trigger browser download IMMEDIATELY
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
@@ -411,6 +423,21 @@ const PdfExport = {
         a.click();
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
+        
+        // Then save a copy to the local folder in the background
+        let docType = null;
+        if (filename) {
+            if (filename.startsWith('Facture_')) docType = 'FACTURE';
+            else if (filename.startsWith('Devis_')) docType = 'DEVIS';
+            else if (filename.startsWith('Commande_')) docType = 'BON DE COMMANDE';
+            else if (filename.startsWith('BL_')) docType = 'BON DE LIVRAISON';
+            else if (filename.startsWith('ProForma_')) docType = 'FACTURE PRO FORMA';
+        }
+        if (docType && FileStorage.isReady()) {
+            FileStorage.saveFile(blob, docType, filename).then(saved => {
+                if (saved) console.log(`Excel sauvegardé dans ${docType}`);
+            }).catch(e => console.warn('Sauvegarde locale échouée:', e));
+        }
     },
 
     /**
@@ -419,7 +446,8 @@ const PdfExport = {
     formatNumber(amount) {
         return new Intl.NumberFormat('fr-FR', {
             minimumFractionDigits: 2,
-            maximumFractionDigits: 2
+            maximumFractionDigits: 2,
+            useGrouping: false
         }).format(amount);
     },
 

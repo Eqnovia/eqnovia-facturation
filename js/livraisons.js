@@ -97,13 +97,19 @@ const Livraisons = {
                     <h4>Articles livrés</h4>
                     <table class="lines-table"><thead><tr><th class="col-designation">Désignation</th><th class="col-qty">Qté</th><th class="col-unit">Unité</th><th class="col-total">Total</th><th class="col-actions"></th></tr></thead>
                         <tbody id="lines-container">${linesHtml}</tbody></table>
-                    <button type="button" class="add-line-btn" onclick="Livraisons.ajouterLigne()">+ Ajouter un article</button>
+                    <div class="lines-toolbar">
+                        <button type="button" class="btn btn-sm btn-outline undo-lines-btn" onclick="LineHistory.undo()" disabled title="Ctrl+Z">↩ Annuler</button>
+                        <button type="button" class="btn btn-sm btn-outline redo-lines-btn" onclick="LineHistory.redo()" disabled title="Ctrl+Shift+Z">↪ Rétablir</button>
+                        <span class="lines-toolbar-spacer"></span>
+                        <button type="button" class="add-line-btn" onclick="Livraisons.ajouterLigne()">+ Ajouter un article</button>
+                    </div>
                 </div>
                 <div class="form-actions"><button type="submit" class="btn btn-primary">💾 Enregistrer</button><button type="button" class="btn btn-outline" onclick="Modal.fermer()">Annuler</button></div>
             </form>`;
     },
 
     ajouterLigne() {
+        LineHistory.saveState();
         const container = document.getElementById('lines-container');
         const row = document.createElement('tr'); row.className = 'line-row';
         row.innerHTML = `<td><input type="text" name="designation" class="line-designation" placeholder="Désignation"></td>
@@ -114,14 +120,17 @@ const Livraisons = {
         container.appendChild(row);
     },
 
-    supprimerLigne(btn) { const row = btn.closest('tr'); if (document.querySelectorAll('.line-row').length > 1) { row.remove(); } },
+    supprimerLigne(btn) { const row = btn.closest('tr'); if (document.querySelectorAll('.line-row').length > 1) { LineHistory.saveState(); row.remove(); } },
 
     sauvegarder(event) {
         event.preventDefault();
         const form = document.getElementById('livraison-form');
         const data = new FormData(form);
-        const clientId = parseInt(data.get('clientId'));
+        const rawClientId = data.get('clientId');
+        const clientId = parseInt(rawClientId);
+        console.log('Sauvegarde livraison - rawClientId:', rawClientId, 'type:', typeof rawClientId, 'parsed:', clientId);
         const client = Clients.getById(clientId);
+        console.log('Client trouvé:', client);
         if (!client) return Toast.error('Veuillez sélectionner un client');
 
         const lignes = [];
@@ -146,6 +155,7 @@ const Livraisons = {
         if (id) { this.modifier(parseInt(id), docData); Toast.success('Bon de livraison modifié avec succès'); }
         else { const saved = this.ajouter(docData); Toast.success(`BL ${saved.reference} créé avec succès`); }
 
+        LineHistory.reset();
         Modal.fermer();
         this.afficher();
         return false;

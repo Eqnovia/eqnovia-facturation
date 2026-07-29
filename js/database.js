@@ -46,9 +46,31 @@ const Database = {
     get(key) { const data = localStorage.getItem(key); return data ? JSON.parse(data) : null; },
     set(key, data) { localStorage.setItem(key, JSON.stringify(data)); },
     add(key, item) { const col = this.get(key) || []; item.id = Date.now(); item.createdAt = new Date().toISOString(); col.unshift(item); this.set(key, col); return item; },
-    update(key, id, updates) { const col = this.get(key) || []; const idx = col.findIndex(i => i.id === id); if (idx !== -1) { col[idx] = { ...col[idx], ...updates, updatedAt: new Date().toISOString() }; this.set(key, col); return col[idx]; } return null; },
-    delete(key, id) { const col = this.get(key) || []; this.set(key, col.filter(i => i.id !== id)); },
-    findById(key, id) { const col = this.get(key) || []; return col.find(i => i.id === id); },
+    update(key, id, updates) {
+        const col = this.get(key) || [];
+        const numericId = Number(id);
+        const idx = col.findIndex(i => Number(i.id) === numericId);
+        if (idx !== -1) {
+            col[idx] = { ...col[idx], ...updates, updatedAt: new Date().toISOString() };
+            this.set(key, col);
+            return col[idx];
+        }
+        return null;
+    },
+    delete(key, id) {
+        const col = this.get(key) || [];
+        const numericId = Number(id);
+        this.set(key, col.filter(i => Number(i.id) !== numericId));
+    },
+    findById(key, id) {
+        const col = this.get(key) || [];
+        // Normalize both to number for safe comparison (handles string vs number type mismatches)
+        const numericId = Number(id);
+        return col.find(i => {
+            const itemId = Number(i.id);
+            return itemId === numericId;
+        });
+    },
     getNextNumber(type) {
         const counters = this.get(this.KEYS.COUNTERS);
         const today = new Date();

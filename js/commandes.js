@@ -111,7 +111,12 @@ const Commandes = {
                     <h4>Lignes de la commande</h4>
                     <table class="lines-table"><thead><tr><th class="col-designation">Désignation</th><th class="col-tva">TVA</th><th class="col-qty">Qté</th><th class="col-unit">Unité</th><th class="col-price">Prix unit.</th><th class="col-total">Total</th><th class="col-actions"></th></tr></thead>
                         <tbody id="lines-container">${linesHtml}</tbody></table>
-                    <button type="button" class="add-line-btn" onclick="Commandes.ajouterLigne()">+ Ajouter une ligne</button>
+                    <div class="lines-toolbar">
+                        <button type="button" class="btn btn-sm btn-outline undo-lines-btn" onclick="LineHistory.undo()" disabled title="Ctrl+Z">↩ Annuler</button>
+                        <button type="button" class="btn btn-sm btn-outline redo-lines-btn" onclick="LineHistory.redo()" disabled title="Ctrl+Shift+Z">↪ Rétablir</button>
+                        <span class="lines-toolbar-spacer"></span>
+                        <button type="button" class="add-line-btn" onclick="Commandes.ajouterLigne()">+ Ajouter une ligne</button>
+                    </div>
                 </div>
                 <div class="document-totals"><table class="totals-table"><tr><td class="label">Total HT</td><td class="value" id="total-ht">0,00 Dhs</td></tr><tr><td class="label">Total TVA</td><td class="value" id="total-tva">0,00 Dhs</td></tr><tr><td class="label">Total TTC</td><td class="value total-ttc" id="total-ttc">0,00 Dhs</td></tr></table></div>
                 <div class="form-actions"><button type="submit" class="btn btn-primary">💾 Enregistrer</button><button type="button" class="btn btn-outline" onclick="Modal.fermer()">Annuler</button></div>
@@ -140,6 +145,7 @@ const Commandes = {
     },
 
     ajouterLigne() {
+        LineHistory.saveState();
         const container = document.getElementById('lines-container');
         const row = document.createElement('tr'); row.className = 'line-row';
         row.innerHTML = `<td><input type="text" name="designation" class="line-designation" placeholder="Désignation"></td>
@@ -153,7 +159,7 @@ const Commandes = {
         this.actualiserTotaux();
     },
 
-    supprimerLigne(btn) { const row = btn.closest('tr'); if (document.querySelectorAll('.line-row').length > 1) { row.remove(); this.actualiserTotaux(); } },
+    supprimerLigne(btn) { const row = btn.closest('tr'); if (document.querySelectorAll('.line-row').length > 1) { LineHistory.saveState(); row.remove(); this.actualiserTotaux(); } },
 
     actualiserTotaux() {
         const rows = document.querySelectorAll('.line-row');
@@ -178,17 +184,21 @@ const Commandes = {
         const form = document.getElementById('commande-form');
         const data = new FormData(form);
         const fullId = data.get('clientId');
+        console.log('Sauvegarde commande - fullId:', fullId, 'type:', typeof fullId);
         if (!fullId) return Toast.error('Veuillez sélectionner un client/fournisseur');
 
         const [type, idStr] = fullId.split('_');
         const entityId = parseInt(idStr);
+        console.log('  → type:', type, 'entityId:', entityId, 'isNaN:', isNaN(entityId));
         let entity = null, clientNom = '', clientAdresse = '', clientVille = '', clientIce = '', clientRC = '';
 
         if (type === 'fournisseur') {
             entity = Fournisseurs.getById(entityId);
+            console.log('  → Fournisseur.getById:', entity);
             if (entity) { clientNom = entity.nom || entity.raisonSociale || ''; clientAdresse = entity.adresse || ''; clientVille = entity.ville || ''; clientIce = entity.ice || ''; }
         } else {
             entity = Clients.getById(entityId);
+            console.log('  → Clients.getById:', entity);
             if (entity) { clientNom = entity.nom || entity.raisonSociale || ''; clientAdresse = entity.adresse || ''; clientVille = entity.ville || ''; clientIce = entity.ice || ''; clientRC = entity.rc || ''; }
         }
         if (!entity) return Toast.error('Entité introuvable');
@@ -216,6 +226,7 @@ const Commandes = {
         if (id) { this.modifier(parseInt(id), docData); Toast.success('Commande modifiée avec succès'); }
         else { const saved = this.ajouter(docData); Toast.success(`Commande ${saved.reference} créée avec succès`); }
 
+        LineHistory.reset();
         Modal.fermer();
         this.afficher();
         return false;

@@ -114,13 +114,13 @@
             }
         };
 
-        // ====== FORMAT NUMBER ======
-        function formatNumber(amount) {
-            return new Intl.NumberFormat('fr-FR', {
-                minimumFractionDigits: 2,
-                maximumFractionDigits: 2
-            }).format(amount);
-        }
+        // ====== FORMAT NUMBER ======                function formatNumber(amount) {
+                    return new Intl.NumberFormat('fr-FR', {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                        useGrouping: false
+                    }).format(amount);
+                }
 
         function getLogoBase64() {
             try {
@@ -263,13 +263,13 @@
 
             // ===== LINES TABLE (centered via autoTable margins) =====
             const tableHeader = [
-                { content: 'Désignation', options: { halign: 'left' } },
+                { content: 'Désignation', options: { halign: 'center' } },
                 { content: '% TVA', options: { halign: 'center' } },
-                { content: 'Montant TVA', options: { halign: 'right' } },
+                { content: 'Montant TVA', options: { halign: 'center' } },
                 { content: 'Qté', options: { halign: 'center' } },
                 { content: 'Unité', options: { halign: 'center' } },
-                { content: 'Prix unitaire HT', options: { halign: 'right' } },
-                { content: 'Prix total HT', options: { halign: 'right' } }
+                { content: 'Prix unitaire HT', options: { halign: 'center' } },
+                { content: 'Prix total HT', options: { halign: 'center' } }
             ];
 
             const tableData = data.lignes.map(line => {
@@ -320,13 +320,13 @@
                     alternateRowStyles: {
                         fillColor: [242, 244, 248]
                     },                    columnStyles: {
-                        0: { cellWidth: 'auto' },
-                    1: { cellWidth: 13, halign: 'center' },
-                    2: { cellWidth: 28, halign: 'right' },
-                    3: { cellWidth: 13, halign: 'center' },
-                    4: { cellWidth: 14, halign: 'center' },
-                        5: { cellWidth: 30, halign: 'right' },
-                        6: { cellWidth: 30, halign: 'right' }
+                        0: { cellWidth: 'auto', halign: 'center' },
+                        1: { cellWidth: 13, halign: 'center' },
+                        2: { cellWidth: 28, halign: 'center' },
+                        3: { cellWidth: 13, halign: 'center' },
+                        4: { cellWidth: 14, halign: 'center' },
+                        5: { cellWidth: 30, halign: 'center' },
+                        6: { cellWidth: 30, halign: 'center' }
                     }
             });
 

@@ -13,9 +13,17 @@
 <body>
     <!-- Header -->
     <header class="header">
-        <div class="logo">
-            <h1>Eqnovia</h1>
-            <span>Gestion de Facturation</span>
+        <div class="header-top">
+            <div class="logo">
+                <h1>Eqnovia</h1>
+                <span>Gestion de Facturation</span>
+            </div>
+            <div class="header-actions">
+                <button class="btn btn-folder" onclick="FileStorage.setupFolder()" title="Configurer le dossier de sauvegarde sur le Bureau">
+                    <span class="icon">📁</span> Dossier local
+                </button>
+                <span id="folder-status-dot" class="folder-dot folder-dot-inactive" title="Dossier non configuré"></span>
+            </div>
         </div>
         <nav class="main-nav">
             <button class="nav-btn active" data-section="dashboard">

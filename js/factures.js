@@ -232,7 +232,12 @@ const Factures = {
                         </thead>
                         <tbody id="lines-container">${linesHtml}</tbody>
                     </table>
-                    <button type="button" class="add-line-btn" onclick="Factures.ajouterLigne()">+ Ajouter une ligne</button>
+                    <div class="lines-toolbar">
+                        <button type="button" class="btn btn-sm btn-outline undo-lines-btn" onclick="LineHistory.undo()" disabled title="Ctrl+Z">↩ Annuler</button>
+                        <button type="button" class="btn btn-sm btn-outline redo-lines-btn" onclick="LineHistory.redo()" disabled title="Ctrl+Shift+Z">↪ Rétablir</button>
+                        <span class="lines-toolbar-spacer"></span>
+                        <button type="button" class="add-line-btn" onclick="Factures.ajouterLigne()">+ Ajouter une ligne</button>
+                    </div>
                 </div>
                 <div class="document-totals">
                     <table class="totals-table">
@@ -250,6 +255,7 @@ const Factures = {
     },
 
     ajouterLigne() {
+        LineHistory.saveState();
         const container = document.getElementById('lines-container');
         const row = document.createElement('tr');
         row.className = 'line-row';
@@ -273,6 +279,7 @@ const Factures = {
     supprimerLigne(btn) {
         const row = btn.closest('tr');
         if (document.querySelectorAll('.line-row').length > 1) {
+            LineHistory.saveState();
             row.remove();
             this.actualiserTotaux();
         }
@@ -302,8 +309,12 @@ const Factures = {
         const form = document.getElementById('facture-form');
         const data = new FormData(form);
 
-        const clientId = parseInt(data.get('clientId'));
+        const rawClientId = data.get('clientId');
+        const clientId = parseInt(rawClientId);
+        // Debug: vérifier la valeur reçue
+        console.log('Sauvegarde facture - rawClientId:', rawClientId, 'type:', typeof rawClientId, 'parsed:', clientId, 'isNaN:', isNaN(clientId));
         const client = Clients.getById(clientId);
+        console.log('Client trouvé:', client);
         if (!client) return Toast.error('Veuillez sélectionner un client');
 
         const rows = document.querySelectorAll('.line-row');
@@ -344,6 +355,7 @@ const Factures = {
             Toast.success(`Facture ${saved.reference} créée avec succès`);
         }
 
+        LineHistory.reset();
         Modal.fermer();
         this.afficher();
         return false;

@@ -9,6 +9,9 @@ const App = {
         this.setupNavigation();
         this.initialiserDonneesDemo();
         this.afficherTableauBord();
+        
+        // Initialize FileStorage (restore saved folder handle)
+        FileStorage.init();
 
         // Auto-refresh totals on input change (delegated)
         document.addEventListener('input', (e) => {
@@ -32,6 +35,25 @@ const App = {
         if (document.getElementById('commande-type')) {
             Commandes.changerType();
         }
+
+        // Keyboard shortcuts: Ctrl+Z (undo), Ctrl+Shift+Z (redo)
+        // Only intercept when focus is inside the lines container to avoid
+        // blocking native Ctrl+Z in other inputs (client name, date, etc.)
+        document.addEventListener('keydown', (e) => {
+            const inLinesArea = e.target.closest('.document-lines');
+            if (!inLinesArea) return; // let native shortcuts work elsewhere
+
+            if (e.ctrlKey && e.key === 'z' && !e.shiftKey) {
+                e.preventDefault();
+                LineHistory.undo();
+            } else if (e.ctrlKey && (e.key === 'Z' || e.key === 'z') && e.shiftKey) {
+                e.preventDefault();
+                LineHistory.redo();
+            } else if (e.ctrlKey && e.key === 'y') {
+                e.preventDefault();
+                LineHistory.redo();
+            }
+        });
     },
 
     setupNavigation() {
