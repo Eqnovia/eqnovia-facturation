@@ -36,6 +36,7 @@ const Livraisons = {
                 <td>${Utils.formatDate(d.date)}</td>
                 <td class="actions">
                     <button class="btn btn-sm btn-outline" onclick="Livraisons.voir(${d.id})">👁️</button>
+                    <button class="btn btn-sm btn-warning" onclick="Livraisons.editer(${d.id})">✏️</button>
                     <button class="btn btn-sm btn-success" onclick="Livraisons.exportPDF(${d.id})">📄</button>
                     <button class="btn btn-sm btn-warning" onclick="Livraisons.exportExcel(${d.id})">📊</button>
                     <button class="btn btn-sm btn-danger" onclick="Livraisons.supprimer(${d.id})">🗑️</button>
@@ -48,6 +49,12 @@ const Livraisons = {
 
     nouveau() {
         Modal.ouvrir('Nouveau Bon de Livraison', this.getFormHtml());
+    },
+
+    editer(id) {
+        const d = this.getById(id);
+        if (!d) return Toast.error('Bon de livraison introuvable');
+        Modal.ouvrir(`Modifier BL ${d.reference}`, this.getFormHtml(d));
     },
 
     voir(id) {
@@ -66,6 +73,7 @@ const Livraisons = {
                 <div class="form-actions">
                     <button class="btn btn-success" onclick="Livraisons.exportPDF(${d.id})">📄 PDF</button>
                     <button class="btn btn-warning" onclick="Livraisons.exportExcel(${d.id})">📊 Excel</button>
+                    <button class="btn btn-primary" onclick="Livraisons.editer(${d.id})">✏️ Modifier</button>
                     <button class="btn btn-outline" onclick="Modal.fermer()">Fermer</button>
                 </div>
             </div>
@@ -98,8 +106,6 @@ const Livraisons = {
                     <table class="lines-table"><thead><tr><th class="col-designation">Désignation</th><th class="col-qty">Qté</th><th class="col-unit">Unité</th><th class="col-total">Total</th><th class="col-actions"></th></tr></thead>
                         <tbody id="lines-container">${linesHtml}</tbody></table>
                     <div class="lines-toolbar">
-                        <button type="button" class="btn btn-sm btn-outline undo-lines-btn" onclick="LineHistory.undo()" disabled title="Ctrl+Z">↩ Annuler</button>
-                        <button type="button" class="btn btn-sm btn-outline redo-lines-btn" onclick="LineHistory.redo()" disabled title="Ctrl+Shift+Z">↪ Rétablir</button>
                         <span class="lines-toolbar-spacer"></span>
                         <button type="button" class="add-line-btn" onclick="Livraisons.ajouterLigne()">+ Ajouter un article</button>
                     </div>
@@ -109,7 +115,6 @@ const Livraisons = {
     },
 
     ajouterLigne() {
-        LineHistory.saveState();
         const container = document.getElementById('lines-container');
         const row = document.createElement('tr'); row.className = 'line-row';
         row.innerHTML = `<td><input type="text" name="designation" class="line-designation" placeholder="Désignation"></td>
@@ -118,20 +123,20 @@ const Livraisons = {
             <td class="line-total">0,00 Dhs</td>
             <td><button type="button" class="remove-line-btn" onclick="Livraisons.supprimerLigne(this)">×</button></td>`;
         container.appendChild(row);
+        LineHistory.saveState();
     },
 
-    supprimerLigne(btn) { const row = btn.closest('tr'); if (document.querySelectorAll('.line-row').length > 1) { LineHistory.saveState(); row.remove(); } },
+    supprimerLigne(btn) { const row = btn.closest('tr'); if (document.querySelectorAll('.line-row').length > 1) { row.remove(); LineHistory.saveState(); } },
 
     sauvegarder(event) {
         event.preventDefault();
         const form = document.getElementById('livraison-form');
         const data = new FormData(form);
         const rawClientId = data.get('clientId');
-        const clientId = parseInt(rawClientId);
-        console.log('Sauvegarde livraison - rawClientId:', rawClientId, 'type:', typeof rawClientId, 'parsed:', clientId);
-        const client = Clients.getById(clientId);
-        console.log('Client trouvé:', client);
+        // Recherche tolérante : l'id peut être numérique, chaîne ou très grand (Date.now())
+        const client = Clients.getById(rawClientId) || Clients.getById(parseInt(rawClientId));
         if (!client) return Toast.error('Veuillez sélectionner un client');
+        const clientId = client.id;
 
         const lignes = [];
         document.querySelectorAll('.line-row').forEach(row => {

@@ -28,15 +28,16 @@ const Commandes = {
             return;
         }
 
-        let html = `<table class="data-table"><thead><tr><th>Réf.</th><th>Client/Fournisseur</th><th>Date</th><th>Total TTC</th><th>Actions</th></tr></thead><tbody>`;
+        let html = `<table class="data-table"><thead><tr><th>Réf.</th><th>Fournisseur</th><th>Date</th><th>Total TTC</th><th>Actions</th></tr></thead><tbody>`;
         filtered.forEach(d => {
             html += `<tr>
                 <td><strong>${Utils.escapeHtml(d.reference || '')}</strong></td>
-                <td>${Utils.escapeHtml(d.clientNom || d.fournisseurNom || '')}</td>
+                <td>${Utils.escapeHtml(d.fournisseurNom || d.clientNom || '')}</td>
                 <td>${Utils.formatDate(d.date)}</td>
                 <td>${Utils.formatMoney(d.totalTTC || 0)}</td>
                 <td class="actions">
                     <button class="btn btn-sm btn-outline" onclick="Commandes.voir(${d.id})">👁️</button>
+                    <button class="btn btn-sm btn-warning" onclick="Commandes.editer(${d.id})">✏️</button>
                     <button class="btn btn-sm btn-success" onclick="Commandes.exportPDF(${d.id})">📄</button>
                     <button class="btn btn-sm btn-warning" onclick="Commandes.exportExcel(${d.id})">📊</button>
                     <button class="btn btn-sm btn-danger" onclick="Commandes.supprimer(${d.id})">🗑️</button>
@@ -48,7 +49,13 @@ const Commandes = {
     },
 
     nouveau() {
-        Modal.ouvrir('Nouvelle Commande', this.getFormHtml());
+        Modal.ouvrir('Nouveau Bon de Commande Fournisseur', this.getFormHtml());
+    },
+
+    editer(id) {
+        const d = this.getById(id);
+        if (!d) return Toast.error('Commande introuvable');
+        Modal.ouvrir(`Modifier Bon de Commande ${d.reference}`, this.getFormHtml(d));
     },
 
     voir(id) {
@@ -61,12 +68,13 @@ const Commandes = {
 
         Modal.ouvrir(`Commande ${d.reference}`, `
             <div class="document-preview">
-                <div class="preview-header"><div class="preview-company"><h2>Eqnovia</h2><p>${Utils.escapeHtml(d.clientNom || d.fournisseurNom || '')}</p></div><div class="preview-title"><h1>BON DE COMMANDE</h1><p>N°: ${d.reference}</p><p>Date: ${Utils.formatDate(d.date)}</p></div></div>
-                <div class="preview-info"><div class="preview-client"><h3>Client/Fournisseur</h3><p>${Utils.escapeHtml(d.clientNom || d.fournisseurNom || '')}</p><p>${Utils.escapeHtml(d.clientAdresse || d.fournisseurAdresse || '')}</p><p>ICE: ${Utils.escapeHtml(d.clientIce || d.fournisseurIce || '')}</p></div><div class="preview-details"><h3>Détails</h3><p>Total HT: ${Utils.formatMoney(d.totalHT || 0)}</p><p>TVA: ${Utils.formatMoney(d.totalTVA || 0)}</p><p><strong>Total TTC: ${Utils.formatMoney(d.totalTTC || 0)}</strong></p></div></div>
+                <div class="preview-header"><div class="preview-company"><h2>Eqnovia</h2><p>${Utils.escapeHtml(d.fournisseurNom || d.clientNom || '')}</p></div><div class="preview-title"><h1>BON DE COMMANDE</h1><p>N°: ${d.reference}</p><p>Date: ${Utils.formatDate(d.date)}</p></div></div>
+                <div class="preview-info"><div class="preview-client"><h3>Fournisseur</h3><p>${Utils.escapeHtml(d.fournisseurNom || d.clientNom || '')}</p><p>${Utils.escapeHtml(d.fournisseurAdresse || d.clientAdresse || '')}</p><p>ICE: ${Utils.escapeHtml(d.fournisseurIce || d.clientIce || '')}</p></div><div class="preview-details"><h3>Détails</h3><p>Total HT: ${Utils.formatMoney(d.totalHT || 0)}</p><p>TVA: ${Utils.formatMoney(d.totalTVA || 0)}</p><p><strong>Total TTC: ${Utils.formatMoney(d.totalTTC || 0)}</strong></p></div></div>
                 <table class="lines-table"><thead><tr><th>Désignation</th><th>TVA</th><th>Qté</th><th>Unité</th><th>Prix unitaire</th><th>Total</th></tr></thead><tbody>${linesHtml}</tbody></table>
                 <div class="form-actions">
                     <button class="btn btn-success" onclick="Commandes.exportPDF(${d.id})">📄 PDF</button>
                     <button class="btn btn-warning" onclick="Commandes.exportExcel(${d.id})">📊 Excel</button>
+                    <button class="btn btn-primary" onclick="Commandes.editer(${d.id})">✏️ Modifier</button>
                     <button class="btn btn-outline" onclick="Modal.fermer()">Fermer</button>
                 </div>
             </div>
@@ -75,7 +83,6 @@ const Commandes = {
 
     getFormHtml(doc) {
         const d = doc || {};
-        const clients = Clients.getAll();
         const fournisseurs = Fournisseurs.getAll();
         const lignes = d.lignes || [{ designation: '', quantite: 1, prixUnitaire: 0, tva: 20, unite: 'Pièce' }];
         let linesHtml = '';
@@ -93,16 +100,10 @@ const Commandes = {
             <form id="commande-form" onsubmit="return Commandes.sauvegarder(event)">
                 <input type="hidden" name="id" value="${d.id || ''}">
                 <div class="form-row">
-                    <div class="form-group"><label>Type *</label>
-                        <select name="type" id="commande-type" onchange="Commandes.changerType()">
-                            <option value="client" ${d.type!='fournisseur'?'selected':''}>Commande Client</option>
-                            <option value="fournisseur" ${d.type=='fournisseur'?'selected':''}>Bon de commande Fournisseur</option>
-                        </select></div>
-                    <div class="form-group"><label id="commande-client-label">Client *</label>
+                    <div class="form-group"><label>Fournisseur *</label>
                         <select name="clientId" id="commande-client-select" required>
-                            <option value="">Sélectionner...</option>
-                            ${clients.map(c => `<option value="client_${c.id}" ${d.clientId==`client_${c.id}`?'selected':''}>${Utils.escapeHtml(c.nom||c.raisonSociale||'')}</option>`).join('')}
-                            ${fournisseurs.map(f => `<option value="fournisseur_${f.id}" class="fournisseur-option" ${d.clientId==`fournisseur_${f.id}`?'selected':''}>${Utils.escapeHtml(f.nom||f.raisonSociale||'')}</option>`).join('')}
+                            <option value="">Sélectionner un fournisseur...</option>
+                            ${fournisseurs.map(f => `<option value="fournisseur_${f.id}" ${d.clientId==`fournisseur_${f.id}`?'selected':''}>${Utils.escapeHtml(f.nom||f.raisonSociale||'')}</option>`).join('')}
                         </select></div>
                     <div class="form-group"><label>Date</label><input type="date" name="date" value="${Utils.formatDateInput(d.date||new Date())}"></div>
                 </div>
@@ -112,8 +113,6 @@ const Commandes = {
                     <table class="lines-table"><thead><tr><th class="col-designation">Désignation</th><th class="col-tva">TVA</th><th class="col-qty">Qté</th><th class="col-unit">Unité</th><th class="col-price">Prix unit.</th><th class="col-total">Total</th><th class="col-actions"></th></tr></thead>
                         <tbody id="lines-container">${linesHtml}</tbody></table>
                     <div class="lines-toolbar">
-                        <button type="button" class="btn btn-sm btn-outline undo-lines-btn" onclick="LineHistory.undo()" disabled title="Ctrl+Z">↩ Annuler</button>
-                        <button type="button" class="btn btn-sm btn-outline redo-lines-btn" onclick="LineHistory.redo()" disabled title="Ctrl+Shift+Z">↪ Rétablir</button>
                         <span class="lines-toolbar-spacer"></span>
                         <button type="button" class="add-line-btn" onclick="Commandes.ajouterLigne()">+ Ajouter une ligne</button>
                     </div>
@@ -123,29 +122,7 @@ const Commandes = {
             </form>`;
     },
 
-    changerType() {
-        const type = document.getElementById('commande-type')?.value || 'client';
-        const select = document.getElementById('commande-client-select');
-        if (select) {
-            Array.from(select.options).forEach(opt => {
-                if (opt.value.startsWith('fournisseur_')) {
-                    opt.style.display = type === 'fournisseur' ? '' : 'none';
-                } else if (opt.value.startsWith('client_')) {
-                    opt.style.display = type === 'client' ? '' : 'none';
-                } else if (opt.value === '') {
-                    opt.style.display = '';
-                }
-            });
-            if (select.selectedOptions[0]?.style?.display === 'none') {
-                select.value = '';
-            }
-        }
-        document.getElementById('commande-client-label').textContent =
-            type === 'fournisseur' ? 'Fournisseur *' : 'Client *';
-    },
-
     ajouterLigne() {
-        LineHistory.saveState();
         const container = document.getElementById('lines-container');
         const row = document.createElement('tr'); row.className = 'line-row';
         row.innerHTML = `<td><input type="text" name="designation" class="line-designation" placeholder="Désignation"></td>
@@ -157,9 +134,10 @@ const Commandes = {
             <td><button type="button" class="remove-line-btn" onclick="Commandes.supprimerLigne(this)">×</button></td>`;
         container.appendChild(row);
         this.actualiserTotaux();
+        LineHistory.saveState();
     },
 
-    supprimerLigne(btn) { const row = btn.closest('tr'); if (document.querySelectorAll('.line-row').length > 1) { LineHistory.saveState(); row.remove(); this.actualiserTotaux(); } },
+    supprimerLigne(btn) { const row = btn.closest('tr'); if (document.querySelectorAll('.line-row').length > 1) { row.remove(); this.actualiserTotaux(); LineHistory.saveState(); } },
 
     actualiserTotaux() {
         const rows = document.querySelectorAll('.line-row');
@@ -184,24 +162,19 @@ const Commandes = {
         const form = document.getElementById('commande-form');
         const data = new FormData(form);
         const fullId = data.get('clientId');
-        console.log('Sauvegarde commande - fullId:', fullId, 'type:', typeof fullId);
-        if (!fullId) return Toast.error('Veuillez sélectionner un client/fournisseur');
+        if (!fullId) return Toast.error('Veuillez sélectionner un fournisseur');
 
-        const [type, idStr] = fullId.split('_');
-        const entityId = parseInt(idStr);
-        console.log('  → type:', type, 'entityId:', entityId, 'isNaN:', isNaN(entityId));
-        let entity = null, clientNom = '', clientAdresse = '', clientVille = '', clientIce = '', clientRC = '';
-
-        if (type === 'fournisseur') {
-            entity = Fournisseurs.getById(entityId);
-            console.log('  → Fournisseur.getById:', entity);
-            if (entity) { clientNom = entity.nom || entity.raisonSociale || ''; clientAdresse = entity.adresse || ''; clientVille = entity.ville || ''; clientIce = entity.ice || ''; }
-        } else {
-            entity = Clients.getById(entityId);
-            console.log('  → Clients.getById:', entity);
-            if (entity) { clientNom = entity.nom || entity.raisonSociale || ''; clientAdresse = entity.adresse || ''; clientVille = entity.ville || ''; clientIce = entity.ice || ''; clientRC = entity.rc || ''; }
-        }
-        if (!entity) return Toast.error('Entité introuvable');
+        // Les bons de commande sont toujours destinés aux fournisseurs
+        const type = 'fournisseur';
+        const idStr = fullId.startsWith('fournisseur_') ? fullId.replace('fournisseur_', '') : fullId;
+        const entityId = idStr ? parseInt(idStr) : NaN;
+        const entity = Fournisseurs.getById(idStr) || Fournisseurs.getById(entityId);
+        if (!entity) return Toast.error('Fournisseur introuvable');
+        const clientNom = entity.nom || entity.raisonSociale || '';
+        const clientAdresse = entity.adresse || '';
+        const clientVille = entity.ville || '';
+        const clientIce = entity.ice || '';
+        const clientRC = entity.rc || '';
 
         const lignes = [];
         document.querySelectorAll('.line-row').forEach(row => {
@@ -216,7 +189,9 @@ const Commandes = {
 
         const totals = Utils.calculateTotals(lignes);
         const docData = {
-            type, clientId: fullId, clientNom, clientAdresse, clientVille, clientIce, clientRC,
+            type, clientId: fullId,
+            clientNom, clientAdresse, clientVille, clientIce, clientRC,
+            fournisseurNom: clientNom, fournisseurAdresse: clientAdresse, fournisseurVille: clientVille, fournisseurIce: clientIce,
             date: data.get('date') || new Date().toISOString().split('T')[0],
             objet: data.get('objet') || '',
             lignes, totalHT: totals.totalHT, totalTVA: totals.totalTVA, totalTTC: totals.totalTTC, statut: 'En cours'
@@ -245,7 +220,7 @@ const Commandes = {
     exportExcel(id) {
         const doc = this.getById(id);
         if (!doc) return Toast.error('Commande introuvable');
-        const data = doc.lignes.map(l => ({ 'Désignation': l.designation, 'Quantité': l.quantite, 'Unité': l.unite, 'Prix unitaire HT': l.prixUnitaire, 'TVA %': l.tva, 'Total HT': (l.quantite||0)*(l.prixUnitaire||0), 'Référence': doc.reference, 'Client/Fournisseur': doc.clientNom, 'Date': Utils.formatDate(doc.date) }));
+        const data = doc.lignes.map(l => ({ 'Désignation': l.designation, 'Quantité': l.quantite, 'Unité': l.unite, 'Prix unitaire HT': l.prixUnitaire, 'TVA %': l.tva, 'Total HT': (l.quantite||0)*(l.prixUnitaire||0), 'Référence': doc.reference, 'Fournisseur': doc.fournisseurNom || doc.clientNom, 'Date': Utils.formatDate(doc.date) }));
         PdfExport.exportToExcel(data, `Commande_${doc.reference}.xlsx`);
         Toast.success('Excel téléchargé avec succès');
     }

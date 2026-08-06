@@ -29,9 +29,12 @@ const Fournisseurs = {
     afficher() {
         const fournisseurs = this.getAll();
         const filter = (document.getElementById('filter-fournisseurs')?.value || '').toLowerCase();
-        const filtered = fournisseurs.filter(f =>
-            (f.nom || f.raisonSociale || '').toLowerCase().includes(filter)
-        );
+        const filtered = fournisseurs.filter(f => {
+            const q = filter;
+            return (f.nom || f.raisonSociale || '').toLowerCase().includes(q) ||
+                (f.ville || '').toLowerCase().includes(q) ||
+                (f.ice || '').toLowerCase().includes(q);
+        });
 
         const container = document.getElementById('fournisseurs-list');
         if (filtered.length === 0) {

@@ -254,6 +254,63 @@ const Utils = {
         const div = document.createElement('div');
         div.textContent = text;
         return div.innerHTML;
+    },
+    // Read a file as a data URL
+    fileToDataUrl(file) {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result);
+            reader.onerror = () => reject(new Error('Erreur de lecture du fichier'));
+            reader.readAsDataURL(file);
+        });
+    },
+    // Compress an image file into a JPEG data URL (resize + quality) to save storage space
+    compressImage(file, maxDim = 1400, quality = 0.75) {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => {
+                const img = new Image();
+                img.onload = () => {
+                    const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
+                    const canvas = document.createElement('canvas');
+                    canvas.width = Math.round(img.width * scale);
+                    canvas.height = Math.round(img.height * scale);
+                    const ctx = canvas.getContext('2d');
+                    ctx.fillStyle = '#ffffff';
+                    ctx.fillRect(0, 0, canvas.width, canvas.height);
+                    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                    resolve(canvas.toDataURL('image/jpeg', quality));
+                };
+                img.onerror = () => reject(new Error('Image invalide'));
+                img.src = reader.result;
+            };
+            reader.onerror = () => reject(new Error('Erreur de lecture du fichier'));
+            reader.readAsDataURL(file);
+        });
+    },
+    // Format a data-URL length (in chars) as a readable file size (~0.75 bytes per char)
+    formatBytes(dataUrlLength) {
+        const bytes = Math.round((dataUrlLength || 0) * 0.75);
+        if (bytes < 1024) return bytes + ' o';
+        if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(0) + ' Ko';
+        return (bytes / (1024 * 1024)).toFixed(1) + ' Mo';
+    },
+
+    // ─── Protection par mot de passe ───
+    /** Mot de passe requis pour modifier / supprimer / déverrouiller une facture. */
+    MOT_DE_PASSE: 'eqnovia-2026',
+
+    /**
+     * Demande le mot de passe (fenêtre de saisie) pour une action sensible.
+     * Retourne true uniquement si la saisie correspond au mot de passe.
+     * @param {string} raison Description de l'action (ex: « Modifier la facture F2026-07-009 »)
+     */
+    verifierMotDePasse(raison) {
+        const saisie = prompt(`🔒 Action protégée par mot de passe\n\n${raison}\n\nVeuillez saisir le mot de passe :`);
+        if (saisie === null) return false; // annulé
+        if (String(saisie).trim() === this.MOT_DE_PASSE) return true;
+        Toast.error('❌ Mot de passe incorrect');
+        return false;
     }
 };
 

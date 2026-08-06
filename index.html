@@ -4,11 +4,13 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Eqnovia - Gestion de Facturation</title>
-    <link rel="stylesheet" href="css/styles.css">
+    <link rel="stylesheet" href="css/styles.css?v=20260806e">
     <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <!-- SDK Supabase pour la synchronisation en ligne -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.4"></script>
 </head>
 <body>
     <!-- Header -->
@@ -19,6 +21,10 @@
                 <span>Gestion de Facturation</span>
             </div>
             <div class="header-actions">
+                <button class="btn btn-folder" onclick="CloudSync.synchroniser()" title="Synchroniser les données avec le cloud (Supabase)">
+                    <span class="icon">☁️</span> Cloud
+                </button>
+                <span id="cloud-status-dot" class="folder-dot folder-dot-inactive" title="Cloud non configuré"></span>
                 <button class="btn btn-folder" onclick="FileStorage.setupFolder()" title="Configurer le dossier de sauvegarde sur le Bureau">
                     <span class="icon">📁</span> Dossier local
                 </button>
@@ -44,14 +50,11 @@
             <button class="nav-btn" data-section="proforma">
                 <span class="icon">📑</span> Pro Forma
             </button>
-            <button class="nav-btn" data-section="clients">
-                <span class="icon">👥</span> Clients
-            </button>
-            <button class="nav-btn" data-section="fournisseurs">
-                <span class="icon">🏭</span> Fournisseurs
+            <button class="nav-btn" data-section="contacts">
+                <span class="icon">📇</span> Contacts
             </button>
             <button class="nav-btn" data-section="produits">
-                <span class="icon">📦</span> Produits
+                <span class="icon">🧰</span> Services
             </button>
         </nav>
     </header>
@@ -102,6 +105,7 @@
                 <select id="filter-status" onchange="Factures.filtrer()">
                     <option value="">Tous les statuts</option>
                     <option value="Payée">Payée</option>
+                    <option value="Partiellement payée">Partiellement payée</option>
                     <option value="Impayée">Impayée</option>
                 </select>
             </div>
@@ -125,9 +129,9 @@
         <!-- Commandes Section -->
         <section id="commandes" class="section">
             <div class="section-header">
-                <h2>Gestion des Commandes</h2>
+                <h2>Bons de Commande Fournisseurs</h2>
                 <button class="btn btn-primary" onclick="Commandes.nouveau()">
-                    <span>+</span> Nouvelle Commande
+                    <span>+</span> Nouveau Bon de Commande
                 </button>
             </div>
             <div class="filters">
@@ -164,6 +168,23 @@
             <div id="proforma-list" class="data-list"></div>
         </section>
 
+        <!-- Contacts Section (liste maîtresse) -->
+        <section id="contacts" class="section">
+            <div class="section-header">
+                <h2>Gestion des Contacts</h2>
+                <button class="btn btn-primary" onclick="Contacts.nouveau()">
+                    <span>+</span> Nouveau Contact
+                </button>
+                <button class="btn btn-outline" onclick="ImportListe.importer()" title="Importer en un clic la liste des 46 sociétés fournie">
+                    <span>📥</span> Importer la liste
+                </button>
+            </div>
+            <div class="filters">
+                <input type="text" id="filter-contacts" placeholder="Rechercher par nom, ville ou ICE..." onkeyup="Contacts.filtrer()">
+            </div>
+            <div id="contacts-list" class="data-list"></div>
+        </section>
+
         <!-- Clients Section -->
         <section id="clients" class="section">
             <div class="section-header">
@@ -173,7 +194,7 @@
                 </button>
             </div>
             <div class="filters">
-                <input type="text" id="filter-clients" placeholder="Rechercher..." onkeyup="Clients.filtrer()">
+                <input type="text" id="filter-clients" placeholder="Rechercher par nom, ville ou ICE..." onkeyup="Clients.filtrer()">
             </div>
             <div id="clients-list" class="data-list"></div>
         </section>
@@ -187,21 +208,21 @@
                 </button>
             </div>
             <div class="filters">
-                <input type="text" id="filter-fournisseurs" placeholder="Rechercher..." onkeyup="Fournisseurs.filtrer()">
+                <input type="text" id="filter-fournisseurs" placeholder="Rechercher par nom, ville ou ICE..." onkeyup="Fournisseurs.filtrer()">
             </div>
             <div id="fournisseurs-list" class="data-list"></div>
         </section>
 
-        <!-- Produits Section -->
+        <!-- Produits Section (Services) -->
         <section id="produits" class="section">
             <div class="section-header">
-                <h2>Gestion des Produits</h2>
+                <h2>Gestion des Services</h2>
                 <button class="btn btn-primary" onclick="Produits.nouveau()">
-                    <span>+</span> Nouveau Produit
+                    <span>+</span> Nouveau Service
                 </button>
             </div>
             <div class="filters">
-                <input type="text" id="filter-produits" placeholder="Rechercher..." onkeyup="Produits.filtrer()">
+                <input type="text" id="filter-produits" placeholder="Rechercher un service..." onkeyup="Produits.filtrer()">
             </div>
             <div id="produits-list" class="data-list"></div>
         </section>
@@ -221,20 +242,24 @@
     <!-- Toast notifications -->
     <div id="toast-container"></div>
 
-    <!-- Scripts -->
-    <script src="js/database.js"></script>
-    <script src="js/utils.js"></script>
-    <script src="js/logo_loader.js"></script>
-    <script src="cache_loader.js"></script>
-    <script src="js/clients.js"></script>
-    <script src="js/fournisseurs.js"></script>
-    <script src="js/produits.js"></script>
-    <script src="js/factures.js"></script>
-    <script src="js/devis.js"></script>
-    <script src="js/commandes.js"></script>
-    <script src="js/livraisons.js"></script>
-    <script src="js/proforma.js"></script>
-    <script src="js/pdf-export.js"></script>
-    <script src="js/app.js"></script>
+    <!-- Scripts (cache-busting : force le rechargement des nouvelles versions) -->
+    <script src="js/database.js?v=20260806e"></script>
+    <script src="js/supabase-config.js?v=20260806c"></script>
+    <script src="js/sync.js?v=20260806c"></script>
+    <script src="js/utils.js?v=20260806i"></script>
+    <script src="js/logo_loader.js?v=20260806b"></script>
+    <script src="cache_loader.js?v=20260806b"></script>
+    <script src="js/clients.js?v=20260806b"></script>
+    <script src="js/contacts.js?v=20260806f"></script>
+    <script src="js/import-liste.js?v=20260806e"></script>
+    <script src="js/fournisseurs.js?v=20260806b"></script>
+    <script src="js/produits.js?v=20260806b"></script>
+    <script src="js/factures.js?v=20260806i"></script>
+    <script src="js/devis.js?v=20260806h"></script>
+    <script src="js/commandes.js?v=20260806h"></script>
+    <script src="js/livraisons.js?v=20260806h"></script>
+    <script src="js/proforma.js?v=20260806h"></script>
+    <script src="js/pdf-export.js?v=20260806b"></script>
+    <script src="js/app.js?v=20260806e"></script>
 </body>
 </html>

@@ -4,9 +4,13 @@
 const App = {
     currentSection: 'dashboard',
 
-    init() {
+    async init() {
         Modal.init();
         this.setupNavigation();
+
+        // Synchronisation cloud (Supabase) — silencieuse si non configuré
+        await this.initialiserCloud();
+
         this.initialiserDonneesDemo();
         this.afficherTableauBord();
         
@@ -31,11 +35,6 @@ const App = {
             }
         });
 
-        // Initialize commande type selector
-        if (document.getElementById('commande-type')) {
-            Commandes.changerType();
-        }
-
         // Keyboard shortcuts: Ctrl+Z (undo), Ctrl+Shift+Z (redo)
         // Only intercept when focus is inside the lines container to avoid
         // blocking native Ctrl+Z in other inputs (client name, date, etc.)
@@ -54,6 +53,26 @@ const App = {
                 LineHistory.redo();
             }
         });
+    },
+
+    /**
+     * Active la synchronisation Supabase (si configurée).
+     * Récupère les données du cloud, puis écoute les changements en temps réel.
+     */
+    async initialiserCloud() {
+        try {
+            const ok = await CloudSync.init();
+            if (!ok) return;
+            await CloudSync.pullAll();
+            CloudSync.startRealtime();
+        } catch (e) {
+            console.error('Erreur initialisation cloud:', e);
+        }
+    },
+
+    /** Re-rend la section actuellement affichée (utilisé par la synchro temps réel). */
+    rafraichirSection() {
+        this.naviguerVers(this.currentSection);
     },
 
     setupNavigation() {
@@ -84,6 +103,7 @@ const App = {
             case 'commandes': Commandes.afficher(); break;
             case 'livraisons': Livraisons.afficher(); break;
             case 'proforma': ProForma.afficher(); break;
+            case 'contacts': Contacts.afficher(); break;
             case 'clients': Clients.afficher(); break;
             case 'fournisseurs': Fournisseurs.afficher(); break;
             case 'produits': Produits.afficher(); break;
@@ -107,7 +127,7 @@ const App = {
         });
 
         const caMois = facturesMois.reduce((sum, f) => sum + (f.totalTTC || 0), 0);
-        const impayees = factures.filter(f => f.statut !== 'Payée').length;
+        const impayees = factures.filter(f => Factures.getStatutReel(f) !== 'Payée').length;
 
         document.getElementById('stat-factures').textContent = facturesMois.length;
         document.getElementById('stat-devis').textContent = devis.filter(d => d.statut === 'En attente' || !d.statut).length;
@@ -143,8 +163,9 @@ const App = {
     initialiserDonneesDemo() {
         // Add demo data if no data exists
         const clients = Database.get(Database.KEYS.CLIENTS);
+        let demoClientAkwelId = null;
         if (!clients || clients.length === 0) {
-            Database.add(Database.KEYS.CLIENTS, {
+            const akwel = Database.add(Database.KEYS.CLIENTS, {
                 nom: 'AKWEL EL JADIDA MOROCCO',
                 adresse: 'Zone industrielle El Jadida, lot. 108',
                 ville: '24040 El Jadida',
@@ -154,6 +175,7 @@ const App = {
                 rc: '123456',
                 if: '98765432'
             });
+            demoClientAkwelId = akwel.id;
 
             Database.add(Database.KEYS.CLIENTS, {
                 nom: 'H&P PROTECTION',
@@ -216,9 +238,10 @@ const App = {
 
         const factures = Database.get(Database.KEYS.FACTURES);
         if (!factures || factures.length === 0) {
-            // Add sample invoice
+            // Add sample invoice (clientId references the real AKWEL client id)
+            const demoClient = demoClientAkwelId ? { id: demoClientAkwelId } : (Database.get(Database.KEYS.CLIENTS)?.[0] || null);
             const f = Database.add(Database.KEYS.FACTURES, {
-                clientId: 1,
+                clientId: demoClient ? demoClient.id : 1,
                 clientNom: 'AKWEL EL JADIDA MOROCCO',
                 clientAdresse: 'Zone industrielle El Jadida, lot. 108',
                 clientVille: '24040 El Jadida',
@@ -237,14 +260,23 @@ const App = {
             counters.facture = 9;
             Database.set(Database.KEYS.COUNTERS, counters);
 
-            // Add sample order
+            // Add sample order (bon de commande fournisseur)
+            const demoFournisseur = Database.get(Database.KEYS.FOURNISSEURS)?.[0];
+            const demoFournNom = demoFournisseur ? (demoFournisseur.nom || demoFournisseur.raisonSociale || 'Fournisseur Pro SARL') : 'Fournisseur Pro SARL';
+            const demoFournAdresse = demoFournisseur ? (demoFournisseur.adresse || '') : '15 Rue de la Liberté';
+            const demoFournVille = demoFournisseur ? (demoFournisseur.ville || '') : 'Rabat';
+            const demoFournIce = demoFournisseur ? (demoFournisseur.ice || '') : '001234567890123';
             const c = Database.add(Database.KEYS.COMMANDES, {
-                type: 'client',
-                clientId: 'client_2',
-                clientNom: 'H&P PROTECTION',
-                clientAdresse: '77 rue Mohammed Smiha, étg 10 Apt 57',
-                clientVille: 'Casablanca',
-                clientIce: '003630679000061',
+                type: 'fournisseur',
+                clientId: demoFournisseur ? `fournisseur_${demoFournisseur.id}` : 'fournisseur_1',
+                clientNom: demoFournNom,
+                clientAdresse: demoFournAdresse,
+                clientVille: demoFournVille,
+                clientIce: demoFournIce,
+                fournisseurNom: demoFournNom,
+                fournisseurAdresse: demoFournAdresse,
+                fournisseurVille: demoFournVille,
+                fournisseurIce: demoFournIce,
                 date: '2026-06-25',
                 reference: 'C2026-06-016',
                 objet: '',

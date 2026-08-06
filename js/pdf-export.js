@@ -189,9 +189,31 @@ const PdfExport = {
             head: [tableHeader],
             body: tableData,
             startY: y,
-            margin: { left: margin + tableMargin / 2, right: margin + tableMargin / 2 },
+            margin: { left: margin + tableMargin / 2, right: margin + tableMargin / 2, top: 28 },
             tableWidth: contentWidth - tableMargin,
             theme: 'grid',
+            didDrawPage: (tableData) => {
+                // Mini en-tête répété sur les pages suivantes (documents multi-pages)
+                if (tableData.pageNumber > 1) {
+                    try {
+                        const logoBase64 = this.getLogoBase64();
+                        if (logoBase64) {
+                            doc.addImage(logoBase64, 'PNG', margin - 2, 8, 35, 11, undefined, 'FAST');
+                        }
+                    } catch (e) {}
+                    doc.setTextColor(0, 0, 0);
+                    doc.setFont('helvetica', 'bold');
+                    doc.setFontSize(11);
+                    doc.text(docType.toUpperCase(), pageWidth - margin, 13, { align: 'right' });
+                    doc.setFont('helvetica', 'normal');
+                    doc.setFontSize(8);
+                    doc.setTextColor(100, 100, 100);
+                    doc.text(`Réf : ${data.reference || ''}`, pageWidth - margin, 18, { align: 'right' });
+                    doc.setDrawColor(200, 200, 200);
+                    doc.setLineWidth(0.3);
+                    doc.line(margin, 22, pageWidth - margin, 22);
+                }
+            },
             tableLineColor: [150, 150, 150],
             tableLineWidth: 0.4,
             headStyles: {
@@ -227,9 +249,12 @@ const PdfExport = {
 
         let tableEndY = doc.lastAutoTable.finalY;
 
-        // ===== BOTTOM SECTION: Push totals, bank, and stamp to bottom =====
+        // ===== BOTTOM SECTION: Push totals, bank, payments, and stamp to bottom =====
+        const paiements = data.paiements || [];
+        const hasPayments = docType === 'FACTURE' && paiements.length > 0;
+        const paymentsBlockHeight = hasPayments ? 24 + paiements.length * 5 : 0; // title + header + rows
         const remaining = pageHeight - tableEndY - 20; // space from table end to footer
-        const bottomBlockHeight = 100; // approx height for totals + bank + stamp
+        const bottomBlockHeight = 100 + paymentsBlockHeight; // approx height for totals + bank + payments + stamp
 
         // Check if we have enough space; if not, add a new page
         if (remaining < bottomBlockHeight) {
@@ -255,6 +280,10 @@ const PdfExport = {
             { label: tvaLabel, value: this.formatNumber(data.totalTVA || 0) },
             { label: 'Total TTC', value: this.formatNumber(data.totalTTC || 0), bold: true }
         ];
+        if (hasPayments) {
+            totals.push({ label: 'Montant payé', value: this.formatNumber(data.montantPaye || 0) });
+            totals.push({ label: 'Reste à payer', value: this.formatNumber(data.resteAPayer || 0), bold: (data.resteAPayer || 0) > 0 });
+        }
 
         // Draw a thin line above totals
         doc.setDrawColor(150, 150, 150);
@@ -301,6 +330,54 @@ const PdfExport = {
             y += 8;
         }
 
+        // ===== SUIVI DES PAIEMENTS (factures avec paiements) =====
+        if (hasPayments) {
+            y += 2;
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(9);
+            doc.setTextColor(0, 0, 0);
+            doc.text('Suivi des paiements', col1X, y);
+            y += 5;
+
+            // Table header
+            const payX = col1X;
+            const payCols = [45, 45, 60]; // Date, Montant, Mode
+            const payHeader = ['Date', 'Montant', 'Mode'];
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(7.5);
+            doc.setTextColor(255, 255, 255);
+            doc.setFillColor(60, 65, 205);
+            let hx = payX;
+            doc.rect(hx, y - 3.5, payCols.reduce((a, b) => a + b, 0), 5.5, 'F');
+            payHeader.forEach((h, i) => {
+                doc.text(h, hx + 2, y, { baseline: 'middle' });
+                hx += payCols[i];
+            });
+            y += 5.5;
+
+            // Table rows
+            doc.setFont('helvetica', 'normal');
+            doc.setFontSize(8);
+            doc.setTextColor(40, 40, 40);
+            paiements.forEach((p, i) => {
+                if (i % 2 === 1) {
+                    doc.setFillColor(242, 244, 248);
+                    doc.rect(payX, y - 3.5, payCols.reduce((a, b) => a + b, 0), 5, 'F');
+                }
+                doc.text(Utils.formatDate(p.date), payX + 2, y);
+                doc.text(this.formatNumber(p.montant || 0), payX + payCols[0] + 2, y);
+                doc.text(p.mode || '', payX + payCols[0] + payCols[1] + 2, y);
+                y += 5;
+            });
+            y += 3;
+        }
+
+        // Guard: si le contenu approche du bas de page, basculer sur une nouvelle page avant le cachet
+        if (y > pageHeight - 70) {
+            doc.addPage();
+            y = margin;
+        }
+
         // ===== CACHET / STAMP PNG (centered, positioned dynamically) =====
         // Applied to all document types
         if (docType === 'FACTURE' || docType === 'DEVIS' || docType === 'BON DE COMMANDE' || docType === 'BON DE LIVRAISON' || docType === 'FACTURE PRO FORMA') {
@@ -331,21 +408,64 @@ const PdfExport = {
             y = stampY + stampHeight + 2;
         }
 
-        // ===== FOOTER (centered at bottom) =====
-        const footerY = pageHeight - 16;
-        doc.setDrawColor(200, 200, 200);
-        doc.setLineWidth(0.3);
-        doc.line(margin, footerY - 3, pageWidth - margin, footerY - 3);
+        // ===== PIÈCES JOINTES (photos ajoutées à la facture/devis) =====
+        const imageAttachments = (data.attachments || []).filter(a => (a.type || '').startsWith('image/'));
+        if (imageAttachments.length > 0) {
+            doc.addPage();
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(14);
+            doc.setTextColor(0, 0, 0);
+            doc.text('Pièces jointes', margin, margin + 10);
+            let imgY = margin + 22;
+            for (const att of imageAttachments) {
+                try {
+                    const img = new Image();
+                    await new Promise((resolve, reject) => {
+                        img.onload = resolve;
+                        img.onerror = reject;
+                        img.src = att.dataUrl;
+                    });
+                    const maxW = contentWidth;
+                    const maxH = 200;
+                    const ratio = Math.min(maxW / img.width, maxH / img.height);
+                    const w = img.width * ratio;
+                    const h = img.height * ratio;
+                    if (imgY + h > pageHeight - 30) {
+                        doc.addPage();
+                        imgY = margin + 10;
+                    }
+                    const format = att.dataUrl.startsWith('data:image/png') ? 'PNG' : 'JPEG';
+                    doc.addImage(att.dataUrl, format, (pageWidth - w) / 2, imgY, w, h);
+                    imgY += h + 6;
+                } catch (e) {
+                    console.warn('Impossible d\'ajouter la pièce jointe au PDF:', e);
+                }
+            }
+        }
 
-        doc.setFontSize(7);
-        doc.setTextColor(130, 130, 130);
-        doc.setFont('helvetica', 'normal');
+        // ===== PIEDS DE PAGE + NUMÉROS DE PAGE sur toutes les pages =====
+        const totalPages = doc.internal.getNumberOfPages();
+        for (let p = 1; p <= totalPages; p++) {
+            doc.setPage(p);
+            const footY = pageHeight - 16;
+            doc.setDrawColor(200, 200, 200);
+            doc.setLineWidth(0.3);
+            doc.line(margin, footY - 3, pageWidth - margin, footY - 3);
 
-        const footerText = `${company.nom} S.A. - ${company.adresse} ${company.ville} - Capital : ${company.capital} - ICE : ${company.ice} - RC : ${company.rc} - IF : ${company.if} - N° Taxe Professionnelle : ${company.tp}`;
-        const footerLines = doc.splitTextToSize(footerText, contentWidth);
-        footerLines.forEach((line, idx) => {
-            doc.text(line, pageWidth / 2, footerY + idx * 3, { align: 'center' });
-        });
+            doc.setFontSize(7);
+            doc.setTextColor(130, 130, 130);
+            doc.setFont('helvetica', 'normal');
+
+            const footerText = `${company.nom} S.A. - ${company.adresse} ${company.ville} - Capital : ${company.capital} - ICE : ${company.ice} - RC : ${company.rc} - IF : ${company.if} - N° Taxe Professionnelle : ${company.tp}`;
+            const footerLines = doc.splitTextToSize(footerText, contentWidth);
+            footerLines.forEach((line, idx) => {
+                doc.text(line, pageWidth / 2, footY + idx * 3, { align: 'center' });
+            });
+
+            doc.setFontSize(7.5);
+            doc.setTextColor(130, 130, 130);
+            doc.text(`Page ${p} / ${totalPages}`, pageWidth - margin, footY - 4, { align: 'right' });
+        }
 
         return doc.output('blob');
     },
@@ -469,6 +589,8 @@ const PdfExport = {
      * Prepare document data for PDF generation
      */
     prepareDocumentData(doc, client, lines, reference, totals, docType) {
+        const paiements = doc.paiements || [];
+        const montantPaye = paiements.reduce((s, p) => s + (parseFloat(p.montant) || 0), 0);
         return {
             reference: reference,
             date: Utils.formatDate(doc.date || new Date()),
@@ -483,6 +605,9 @@ const PdfExport = {
             totalHT: totals.totalHT,
             totalTVA: totals.totalTVA,
             totalTTC: totals.totalTTC,
+            paiements: paiements,
+            montantPaye: montantPaye,
+            resteAPayer: Math.max(0, (totals.totalTTC || 0) - montantPaye),
             bankDetails: {
                 banque: 'Crédit du Maroc',
                 beneficiaire: 'Eqnovia',

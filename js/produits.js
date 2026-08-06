@@ -1,5 +1,5 @@
 /**
- * PRODUITS - Gestion des produits/services
+ * SERVICES - Gestion des services (ex-produits)
  */
 const Produits = {
     KEY: Database.KEYS.PRODUITS,
@@ -23,7 +23,7 @@ const Produits = {
     supprimer(id) {
         Database.delete(this.KEY, id);
         this.afficher();
-        Toast.success('Produit supprimé avec succès');
+        Toast.success('Service supprimé avec succès');
     },
 
     afficher() {
@@ -35,7 +35,7 @@ const Produits = {
 
         const container = document.getElementById('produits-list');
         if (filtered.length === 0) {
-            container.innerHTML = '<div class="empty-state">Aucun produit trouvé</div>';
+            container.innerHTML = '<div class="empty-state">Aucun service trouvé</div>';
             return;
         }
 
@@ -71,13 +71,13 @@ const Produits = {
     },
 
     nouveau() {
-        Modal.ouvrir('Nouveau Produit', this.getFormHtml());
+        Modal.ouvrir('Nouveau Service', this.getFormHtml());
     },
 
     editer(id) {
         const produit = this.getById(id);
-        if (!produit) return Toast.error('Produit introuvable');
-        Modal.ouvrir('Modifier Produit', this.getFormHtml(produit));
+        if (!produit) return Toast.error('Service introuvable');
+        Modal.ouvrir('Modifier Service', this.getFormHtml(produit));
     },
 
     getFormHtml(produit) {
@@ -148,10 +148,10 @@ const Produits = {
         const id = data.get('id');
         if (id) {
             this.modifier(parseInt(id), pData);
-            Toast.success('Produit modifié avec succès');
+            Toast.success('Service modifié avec succès');
         } else {
             this.ajouter(pData);
-            Toast.success('Produit ajouté avec succès');
+            Toast.success('Service ajouté avec succès');
         }
 
         Modal.fermer();

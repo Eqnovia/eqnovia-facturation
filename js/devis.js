@@ -38,6 +38,7 @@ const Devis = {
                 <td><span class="status-badge status-attente">${d.statut || 'En attente'}</span></td>
                 <td class="actions">
                     <button class="btn btn-sm btn-outline" onclick="Devis.voir(${d.id})">👁️</button>
+                    <button class="btn btn-sm btn-warning" onclick="Devis.editer(${d.id})">✏️</button>
                     <button class="btn btn-sm btn-success" onclick="Devis.exportPDF(${d.id})">📄</button>
                     <button class="btn btn-sm btn-warning" onclick="Devis.exportExcel(${d.id})">📊</button>
                     <button class="btn btn-sm btn-primary" onclick="Devis.convertirFacture(${d.id})">📋</button>
@@ -51,6 +52,12 @@ const Devis = {
 
     nouveau() {
         Modal.ouvrir('Nouveau Devis', this.getFormHtml());
+    },
+
+    editer(id) {
+        const d = this.getById(id);
+        if (!d) return Toast.error('Devis introuvable');
+        Modal.ouvrir(`Modifier Devis ${d.reference}`, this.getFormHtml(d));
     },
 
     voir(id) {
@@ -69,6 +76,7 @@ const Devis = {
                 <div class="form-actions">
                     <button class="btn btn-success" onclick="Devis.exportPDF(${d.id})">📄 PDF</button>
                     <button class="btn btn-warning" onclick="Devis.exportExcel(${d.id})">📊 Excel</button>
+                    <button class="btn btn-primary" onclick="Devis.editer(${d.id})">✏️ Modifier</button>
                     <button class="btn btn-primary" onclick="Devis.convertirFacture(${d.id})">📋 Convertir en Facture</button>
                     <button class="btn btn-outline" onclick="Modal.fermer()">Fermer</button>
                 </div>
@@ -105,8 +113,6 @@ const Devis = {
                     <table class="lines-table"><thead><tr><th class="col-designation">Désignation</th><th class="col-tva">TVA</th><th class="col-qty">Qté</th><th class="col-unit">Unité</th><th class="col-price">Prix unit.</th><th class="col-total">Total</th><th class="col-actions"></th></tr></thead>
                         <tbody id="lines-container">${linesHtml}</tbody></table>
                     <div class="lines-toolbar">
-                        <button type="button" class="btn btn-sm btn-outline undo-lines-btn" onclick="LineHistory.undo()" disabled title="Ctrl+Z">↩ Annuler</button>
-                        <button type="button" class="btn btn-sm btn-outline redo-lines-btn" onclick="LineHistory.redo()" disabled title="Ctrl+Shift+Z">↪ Rétablir</button>
                         <span class="lines-toolbar-spacer"></span>
                         <button type="button" class="add-line-btn" onclick="Devis.ajouterLigne()">+ Ajouter une ligne</button>
                     </div>
@@ -117,7 +123,6 @@ const Devis = {
     },
 
     ajouterLigne() {
-        LineHistory.saveState();
         const container = document.getElementById('lines-container');
         const row = document.createElement('tr'); row.className = 'line-row';
         row.innerHTML = `<td><input type="text" name="designation" class="line-designation" placeholder="Désignation"></td>
@@ -129,9 +134,10 @@ const Devis = {
             <td><button type="button" class="remove-line-btn" onclick="Devis.supprimerLigne(this)">×</button></td>`;
         container.appendChild(row);
         this.actualiserTotaux();
+        LineHistory.saveState();
     },
 
-    supprimerLigne(btn) { const row = btn.closest('tr'); if (document.querySelectorAll('.line-row').length > 1) { LineHistory.saveState(); row.remove(); this.actualiserTotaux(); } },
+    supprimerLigne(btn) { const row = btn.closest('tr'); if (document.querySelectorAll('.line-row').length > 1) { row.remove(); this.actualiserTotaux(); LineHistory.saveState(); } },
 
     actualiserTotaux() {
         const rows = document.querySelectorAll('.line-row');
@@ -156,11 +162,10 @@ const Devis = {
         const form = document.getElementById('devis-form');
         const data = new FormData(form);
         const rawClientId = data.get('clientId');
-        const clientId = parseInt(rawClientId);
-        console.log('Sauvegarde devis - rawClientId:', rawClientId, 'type:', typeof rawClientId, 'parsed:', clientId);
-        const client = Clients.getById(clientId);
-        console.log('Client trouvé:', client);
+        // Recherche tolérante : l'id peut être numérique, chaîne ou très grand (Date.now())
+        const client = Clients.getById(rawClientId) || Clients.getById(parseInt(rawClientId));
         if (!client) return Toast.error('Veuillez sélectionner un client');
+        const clientId = client.id;
 
         const lignes = [];
         document.querySelectorAll('.line-row').forEach(row => {
@@ -212,6 +217,13 @@ const Devis = {
     convertirFacture(id) {
         const devis = this.getById(id);
         if (!devis) return Toast.error('Devis introuvable');
+
+        if (!confirm(`📋 Convertir le devis ${devis.reference} en facture ?\n\n` +
+            `Client : ${devis.clientNom || '-'}\n` +
+            `Montant TTC : ${Utils.formatMoney(devis.totalTTC || 0)}\n\n` +
+            `Une nouvelle facture sera créée (statut Impayée) et le devis restera conservé.`)) {
+            return;
+        }
 
         // Copy devis data to new invoice
         const factureData = { ...devis };

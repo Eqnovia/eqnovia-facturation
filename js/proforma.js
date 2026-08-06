@@ -37,6 +37,7 @@ const ProForma = {
                 <td>${Utils.formatMoney(d.totalTTC || 0)}</td>
                 <td class="actions">
                     <button class="btn btn-sm btn-outline" onclick="ProForma.voir(${d.id})">👁️</button>
+                    <button class="btn btn-sm btn-warning" onclick="ProForma.editer(${d.id})">✏️</button>
                     <button class="btn btn-sm btn-success" onclick="ProForma.exportPDF(${d.id})">📄</button>
                     <button class="btn btn-sm btn-warning" onclick="ProForma.exportExcel(${d.id})">📊</button>
                     <button class="btn btn-sm btn-primary" onclick="ProForma.convertirFacture(${d.id})">📋</button>
@@ -50,6 +51,12 @@ const ProForma = {
 
     nouveau() {
         Modal.ouvrir('Nouvelle Facture Pro Forma', this.getFormHtml());
+    },
+
+    editer(id) {
+        const d = this.getById(id);
+        if (!d) return Toast.error('Pro forma introuvable');
+        Modal.ouvrir(`Modifier Pro Forma ${d.reference}`, this.getFormHtml(d));
     },
 
     voir(id) {
@@ -68,6 +75,7 @@ const ProForma = {
                 <div class="form-actions">
                     <button class="btn btn-success" onclick="ProForma.exportPDF(${d.id})">📄 PDF</button>
                     <button class="btn btn-warning" onclick="ProForma.exportExcel(${d.id})">📊 Excel</button>
+                    <button class="btn btn-primary" onclick="ProForma.editer(${d.id})">✏️ Modifier</button>
                     <button class="btn btn-primary" onclick="ProForma.convertirFacture(${d.id})">📋 Convertir en Facture</button>
                     <button class="btn btn-outline" onclick="Modal.fermer()">Fermer</button>
                 </div>
@@ -104,8 +112,6 @@ const ProForma = {
                     <table class="lines-table"><thead><tr><th class="col-designation">Désignation</th><th class="col-tva">TVA</th><th class="col-qty">Qté</th><th class="col-unit">Unité</th><th class="col-price">Prix unit.</th><th class="col-total">Total</th><th class="col-actions"></th></tr></thead>
                         <tbody id="lines-container">${linesHtml}</tbody></table>
                     <div class="lines-toolbar">
-                        <button type="button" class="btn btn-sm btn-outline undo-lines-btn" onclick="LineHistory.undo()" disabled title="Ctrl+Z">↩ Annuler</button>
-                        <button type="button" class="btn btn-sm btn-outline redo-lines-btn" onclick="LineHistory.redo()" disabled title="Ctrl+Shift+Z">↪ Rétablir</button>
                         <span class="lines-toolbar-spacer"></span>
                         <button type="button" class="add-line-btn" onclick="ProForma.ajouterLigne()">+ Ajouter une ligne</button>
                     </div>
@@ -116,7 +122,6 @@ const ProForma = {
     },
 
     ajouterLigne() {
-        LineHistory.saveState();
         const container = document.getElementById('lines-container');
         const row = document.createElement('tr'); row.className = 'line-row';
         row.innerHTML = `<td><input type="text" name="designation" class="line-designation" placeholder="Désignation"></td>
@@ -128,9 +133,10 @@ const ProForma = {
             <td><button type="button" class="remove-line-btn" onclick="ProForma.supprimerLigne(this)">×</button></td>`;
         container.appendChild(row);
         this.actualiserTotaux();
+        LineHistory.saveState();
     },
 
-    supprimerLigne(btn) { const row = btn.closest('tr'); if (document.querySelectorAll('.line-row').length > 1) { LineHistory.saveState(); row.remove(); this.actualiserTotaux(); } },
+    supprimerLigne(btn) { const row = btn.closest('tr'); if (document.querySelectorAll('.line-row').length > 1) { row.remove(); this.actualiserTotaux(); LineHistory.saveState(); } },
 
     actualiserTotaux() {
         const rows = document.querySelectorAll('.line-row');
@@ -155,11 +161,10 @@ const ProForma = {
         const form = document.getElementById('proforma-form');
         const data = new FormData(form);
         const rawClientId = data.get('clientId');
-        const clientId = parseInt(rawClientId);
-        console.log('Sauvegarde proforma - rawClientId:', rawClientId, 'type:', typeof rawClientId, 'parsed:', clientId);
-        const client = Clients.getById(clientId);
-        console.log('Client trouvé:', client);
+        // Recherche tolérante : l'id peut être numérique, chaîne ou très grand (Date.now())
+        const client = Clients.getById(rawClientId) || Clients.getById(parseInt(rawClientId));
         if (!client) return Toast.error('Veuillez sélectionner un client');
+        const clientId = client.id;
 
         const lignes = [];
         document.querySelectorAll('.line-row').forEach(row => {

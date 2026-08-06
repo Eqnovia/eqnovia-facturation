@@ -29,9 +29,12 @@ const Clients = {
     afficher() {
         const clients = this.getAll();
         const filter = (document.getElementById('filter-clients')?.value || '').toLowerCase();
-        const filtered = clients.filter(c =>
-            (c.nom || c.raisonSociale || '').toLowerCase().includes(filter)
-        );
+        const filtered = clients.filter(c => {
+            const q = filter;
+            return (c.nom || c.raisonSociale || '').toLowerCase().includes(q) ||
+                (c.ville || '').toLowerCase().includes(q) ||
+                (c.ice || '').toLowerCase().includes(q);
+        });
 
         const container = document.getElementById('clients-list');
         if (filtered.length === 0) {

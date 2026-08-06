@@ -36,9 +36,13 @@
 
 ## ✨ Fonctionnalités Principales
 
-- 📄 Création et gestion de factures
-- 🔍 Recherche et filtrage avancés
-- 💾 Export en différents formats
+- 📄 Création et gestion de factures (avec suivi des paiements 💰)
+- 🔀 Conversions entre documents : Devis → Facture, Facture → Pro Forma, Facture → Bon de Livraison
+- 🧰 Gestion des services (ex-produits), clients et fournisseurs
+- 🔍 Recherche par nom, ville ou ICE
+- 💾 Export PDF (multi-pages) et Excel
+- 📎 Pièces jointes (photos/PDF) sur les factures
+- ☁️ **Synchronisation en ligne** avec Supabase (données visibles par tous les utilisateurs, sans carte bancaire) — voir `SUPABASE.md`
 - 📊 Rapports et statistiques
 - 🎨 Interface utilisateur moderne et responsive
 - 📱 Compatible mobile
@@ -76,12 +80,27 @@ npm start
 
 ```
 eqnovia-facturation/
-├── index.html          # Page principale
-├── css/               # Fichiers de style
-├── js/                # Fichiers JavaScript
-├── assets/            # Ressources (images, fonts)
-└── README.md          # Ce fichier
+├── index.html              # Page principale
+├── css/                    # Fichiers de style
+├── js/                     # Fichiers JavaScript
+│   ├── database.js          # Couche de stockage local (localStorage)
+│   ├── supabase-config.js   # ⚙️ Configuration Supabase (à remplir)
+│   ├── sync.js              # ☁️ Synchronisation Supabase (auto + temps réel)
+│   └── ...
+├── assets/                 # Ressources (images, fonts)
+├── SUPABASE.md             # 🚀 Guide d'activation du cloud (gratuit)
+└── README.md               # Ce fichier
 ```
+
+### ☁️ Synchronisation en ligne (Supabase)
+
+Pour que vos données soient **enregistrées et visibles par tous les
+utilisateurs**, suivez le guide **`SUPABASE.md`** : création du projet
+Supabase (gratuit, sans carte bancaire), copie de l'URL et de la clé dans
+`js/supabase-config.js`, création de la table `eqnovia_data` (script SQL
+fourni) et activation du temps réel. Une fois configuré, le point ☁️ de
+l'en-tête devient vert et toutes les données se synchronisent
+automatiquement et en temps réel entre les appareils.
 
 ---
 

@@ -5,6 +5,7 @@ const Database = {
     KEYS: {
         CLIENTS: 'eqnovia_clients',
         FOURNISSEURS: 'eqnovia_fournisseurs',
+        CONTACTS: 'eqnovia_contacts',
         PRODUITS: 'eqnovia_produits',
         FACTURES: 'eqnovia_factures',
         DEVIS: 'eqnovia_devis',
@@ -64,12 +65,18 @@ const Database = {
     },
     findById(key, id) {
         const col = this.get(key) || [];
-        // Normalize both to number for safe comparison (handles string vs number type mismatches)
-        const numericId = Number(id);
+        if (id === undefined || id === null || id === '') return null;
+        // Compare en tant que chaîne ET en tant que nombre : couvre les ids numériques, chaînes
+        // et les très grands nombres (Date.now()) sans perte de précision.
+        const stringId = String(id);
         return col.find(i => {
-            const itemId = Number(i.id);
-            return itemId === numericId;
-        });
+            if (i.id === undefined || i.id === null) return false;
+            if (String(i.id) === stringId) return true;
+            if (String(i.id).trim() === stringId.trim()) return true;
+            // Fallback numérique uniquement si les deux sont des nombres sûrs
+            const n1 = Number(i.id), n2 = Number(id);
+            return Number.isFinite(n1) && Number.isFinite(n2) && n1 === n2;
+        }) || null;
     },
     getNextNumber(type) {
         const counters = this.get(this.KEYS.COUNTERS);
