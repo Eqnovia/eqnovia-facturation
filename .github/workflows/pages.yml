@@ -1,0 +1,52 @@
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: ["master"]   # Branche par défaut du repository
+  workflow_dispatch:       # Permet un déclenchement manuel depuis l'onglet Actions
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15   # Large marge, le déploiement prend ~1-2 min
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: '.'
+          # Fichiers de développement / exports de test inutiles en production.
+          # Le logo est embarqué dans js/logo_loader.js (localStorage), pas besoin des .txt.
+          exclude: |
+            *.pdf
+            *.png
+            *.PNG
+            *.txt
+            *.bat
+            *.py
+            test-pdf.html
+            cache.png
+
+      # L'action deploy-pages attend automatiquement la fin du déploiement
+      # et expose l'URL de la page. Aucune étape de "polling" n'est nécessaire.
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
