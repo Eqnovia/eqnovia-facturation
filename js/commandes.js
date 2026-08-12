@@ -28,18 +28,19 @@ const Commandes = {
             return;
         }
 
-        let html = `<table class="data-table"><thead><tr><th>Réf.</th><th>Fournisseur</th><th>Date</th><th>Total TTC</th><th>Actions</th></tr></thead><tbody>`;
+        let html = `<table class="data-table"><thead><tr><th>Réf.</th><th>Fournisseur</th><th>Date</th><th>Livraison</th><th>Total TTC</th><th>Actions</th></tr></thead><tbody>`;
         filtered.forEach(d => {
             html += `<tr>
                 <td><strong>${Utils.escapeHtml(d.reference || '')}</strong></td>
                 <td>${Utils.escapeHtml(d.fournisseurNom || d.clientNom || '')}</td>
                 <td>${Utils.formatDate(d.date)}</td>
+                <td>${d.dateLivraison ? Utils.formatDate(d.dateLivraison) : '<span style="opacity:.5">—</span>'}</td>
                 <td>${Utils.formatMoney(d.totalTTC || 0)}</td>
                 <td class="actions">
                     <button class="btn btn-sm btn-outline" onclick="Commandes.voir(${d.id})">👁️</button>
                     <button class="btn btn-sm btn-warning" onclick="Commandes.editer(${d.id})">✏️</button>
-                    <button class="btn btn-sm btn-success" onclick="Commandes.exportPDF(${d.id})">📄</button>
-                    <button class="btn btn-sm btn-warning" onclick="Commandes.exportExcel(${d.id})">📊</button>
+                    <button class="btn btn-sm btn-pdf" onclick="Commandes.exportPDF(${d.id})">📄</button>
+                    <button class="btn btn-sm btn-excel" onclick="Commandes.exportExcel(${d.id})">📊</button>
                     <button class="btn btn-sm btn-danger" onclick="Commandes.supprimer(${d.id})">🗑️</button>
                 </td>
             </tr>`;
@@ -68,12 +69,12 @@ const Commandes = {
 
         Modal.ouvrir(`Commande ${d.reference}`, `
             <div class="document-preview">
-                <div class="preview-header"><div class="preview-company"><h2>Eqnovia</h2><p>${Utils.escapeHtml(d.fournisseurNom || d.clientNom || '')}</p></div><div class="preview-title"><h1>BON DE COMMANDE</h1><p>N°: ${d.reference}</p><p>Date: ${Utils.formatDate(d.date)}</p></div></div>
+                <div class="preview-header"><div class="preview-company"><h2>Eqnovia</h2><p>${Utils.escapeHtml(d.fournisseurNom || d.clientNom || '')}</p></div><div class="preview-title"><h1>BON DE COMMANDE</h1><p>N°: ${d.reference}</p><p>Date: ${Utils.formatDate(d.date)}</p>${d.dateLivraison ? `<p>Date de livraison: ${Utils.formatDate(d.dateLivraison)}</p>` : ''}</div></div>
                 <div class="preview-info"><div class="preview-client"><h3>Fournisseur</h3><p>${Utils.escapeHtml(d.fournisseurNom || d.clientNom || '')}</p><p>${Utils.escapeHtml(d.fournisseurAdresse || d.clientAdresse || '')}</p><p>ICE: ${Utils.escapeHtml(d.fournisseurIce || d.clientIce || '')}</p></div><div class="preview-details"><h3>Détails</h3><p>Total HT: ${Utils.formatMoney(d.totalHT || 0)}</p><p>TVA: ${Utils.formatMoney(d.totalTVA || 0)}</p><p><strong>Total TTC: ${Utils.formatMoney(d.totalTTC || 0)}</strong></p></div></div>
                 <table class="lines-table"><thead><tr><th>Désignation</th><th>TVA</th><th>Qté</th><th>Unité</th><th>Prix unitaire</th><th>Total</th></tr></thead><tbody>${linesHtml}</tbody></table>
                 <div class="form-actions">
-                    <button class="btn btn-success" onclick="Commandes.exportPDF(${d.id})">📄 PDF</button>
-                    <button class="btn btn-warning" onclick="Commandes.exportExcel(${d.id})">📊 Excel</button>
+                    <button class="btn btn-pdf" onclick="Commandes.exportPDF(${d.id})">📄 PDF</button>
+                    <button class="btn btn-excel" onclick="Commandes.exportExcel(${d.id})">📊 Excel</button>
                     <button class="btn btn-primary" onclick="Commandes.editer(${d.id})">✏️ Modifier</button>
                     <button class="btn btn-outline" onclick="Modal.fermer()">Fermer</button>
                 </div>
@@ -90,7 +91,7 @@ const Commandes = {
             linesHtml += `<tr class="line-row"><td><input type="text" name="designation" class="line-designation" value="${Utils.escapeHtml(l.designation || '')}"></td>
                 <td><select name="tva" class="line-tva">${[0,7,10,14,20].map(v => `<option value="${v}" ${(l.tva||0)==v?'selected':''}>${v}%</option>`).join('')}</select></td>
                 <td><input type="number" name="quantite" class="line-qty" value="${l.quantite || 1}" min="0.01" step="0.01"></td>
-                <td><select name="unite" class="line-unite">${['Pièce','Heure','Jour','Forfait','Unité'].map(u => `<option value="${u}" ${l.unite==u?'selected':''}>${u}</option>`).join('')}</select></td>
+                <td><input type="text" name="unite" class="line-unite" list="unites-list" value="${Utils.escapeHtml(l.unite || '')}" placeholder="Choisir ou saisir une unité"></td>
                 <td><input type="number" name="prixUnitaire" class="line-price" value="${l.prixUnitaire || 0}" min="0" step="0.01"></td>
                 <td class="line-total">${Utils.formatMoney((l.quantite||0)*(l.prixUnitaire||0))}</td>
                 <td><button type="button" class="remove-line-btn" onclick="Commandes.supprimerLigne(this)">×</button></td></tr>`;
@@ -106,6 +107,7 @@ const Commandes = {
                             ${fournisseurs.map(f => `<option value="fournisseur_${f.id}" ${d.clientId==`fournisseur_${f.id}`?'selected':''}>${Utils.escapeHtml(f.nom||f.raisonSociale||'')}</option>`).join('')}
                         </select></div>
                     <div class="form-group"><label>Date</label><input type="date" name="date" value="${Utils.formatDateInput(d.date||new Date())}"></div>
+                    <div class="form-group"><label>Date de livraison (optionnelle)</label><input type="date" name="dateLivraison" value="${Utils.formatDateInput(d.dateLivraison||'')}"></div>
                 </div>
                 <div class="form-group"><label>Objet</label><input type="text" name="objet" value="${Utils.escapeHtml(d.objet||'')}"></div>
                 <div class="document-lines">
@@ -128,7 +130,7 @@ const Commandes = {
         row.innerHTML = `<td><input type="text" name="designation" class="line-designation" placeholder="Désignation"></td>
             <td><select name="tva" class="line-tva">${[0,7,10,14,20].map(v => `<option value="${v}" ${v==20?'selected':''}>${v}%</option>`).join('')}</select></td>
             <td><input type="number" name="quantite" class="line-qty" value="1" min="0.01" step="0.01"></td>
-            <td><select name="unite" class="line-unite">${['Pièce','Heure','Jour','Forfait','Unité'].map(u => `<option value="${u}">${u}</option>`).join('')}</select></td>
+            <td><input type="text" name="unite" class="line-unite" list="unites-list" value="" placeholder="Choisir ou saisir une unité"></td>
             <td><input type="number" name="prixUnitaire" class="line-price" value="0" min="0" step="0.01"></td>
             <td class="line-total">0,00 Dhs</td>
             <td><button type="button" class="remove-line-btn" onclick="Commandes.supprimerLigne(this)">×</button></td>`;
@@ -193,6 +195,7 @@ const Commandes = {
             clientNom, clientAdresse, clientVille, clientIce, clientRC,
             fournisseurNom: clientNom, fournisseurAdresse: clientAdresse, fournisseurVille: clientVille, fournisseurIce: clientIce,
             date: data.get('date') || new Date().toISOString().split('T')[0],
+            dateLivraison: data.get('dateLivraison') || '',
             objet: data.get('objet') || '',
             lignes, totalHT: totals.totalHT, totalTVA: totals.totalTVA, totalTTC: totals.totalTTC, statut: 'En cours'
         };
@@ -214,13 +217,12 @@ const Commandes = {
         if (!doc) return Toast.error('Commande introuvable');
         const data = PdfExport.prepareDocumentData(doc, { nom: doc.clientNom, adresse: doc.clientAdresse, ville: doc.clientVille, ice: doc.clientIce, rc: doc.clientRC }, doc.lignes, doc.reference, { totalHT: doc.totalHT, totalTVA: doc.totalTVA, totalTTC: doc.totalTTC }, 'BON DE COMMANDE');
         await PdfExport.downloadPDF('BON DE COMMANDE', data, `Commande_${doc.reference}.pdf`);
-        Toast.success('PDF téléchargé avec succès');
     },
 
     exportExcel(id) {
         const doc = this.getById(id);
         if (!doc) return Toast.error('Commande introuvable');
-        const data = doc.lignes.map(l => ({ 'Désignation': l.designation, 'Quantité': l.quantite, 'Unité': l.unite, 'Prix unitaire HT': l.prixUnitaire, 'TVA %': l.tva, 'Total HT': (l.quantite||0)*(l.prixUnitaire||0), 'Référence': doc.reference, 'Fournisseur': doc.fournisseurNom || doc.clientNom, 'Date': Utils.formatDate(doc.date) }));
+        const data = doc.lignes.map(l => ({ 'Désignation': l.designation, 'Quantité': l.quantite, 'Unité': l.unite, 'Prix unitaire HT': l.prixUnitaire, 'TVA %': l.tva, 'Total HT': (l.quantite||0)*(l.prixUnitaire||0), 'Référence': doc.reference, 'Fournisseur': doc.fournisseurNom || doc.clientNom, 'Date': Utils.formatDate(doc.date), 'Date de livraison': doc.dateLivraison ? Utils.formatDate(doc.dateLivraison) : '' }));
         PdfExport.exportToExcel(data, `Commande_${doc.reference}.xlsx`);
         Toast.success('Excel téléchargé avec succès');
     }

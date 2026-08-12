@@ -33,6 +33,8 @@ const PdfExport = {
         const pageHeight = doc.internal.pageSize.getHeight();
         const margin = 15;
         const contentWidth = pageWidth - 2 * margin;
+        // Factures et Devis : mise en page compacte pour tenir sur une seule page A4
+        const compact = docType === 'FACTURE' || docType === 'DEVIS';
         let y = margin;
 
         // Set PDF metadata
@@ -115,7 +117,7 @@ const PdfExport = {
         }
 
         // ===== DATE & REFERENCE (below the two columns) =====
-        y = Math.max(companyEndY, clientLineY) + 6;
+        y = Math.max(companyEndY, clientLineY) + (compact ? 4 : 6);
 
         const dateLabels = {
             'FACTURE': 'Date de facturation :',
@@ -131,7 +133,13 @@ const PdfExport = {
         doc.text(`${dateLabel}  ${data.date}`, col1X, y);
         doc.text(`Référence :  ${data.reference}`, pageWidth - margin, y, { align: 'right' });
 
-        y += 7;
+        // Date de livraison (optionnelle) : uniquement pour les bons de commande
+        if (docType === 'BON DE COMMANDE' && data.dateLivraison) {
+            doc.text(`Date de livraison :  ${data.dateLivraison}`, col1X, y + 4.5);
+            y += 4.5;
+        }
+
+        y += (compact ? 5 : 7);
 
         // ===== OBJET =====
         if (data.objet) {
@@ -142,7 +150,7 @@ const PdfExport = {
             objetLines.forEach((line, idx) => {
                 doc.text(line, col1X, y + idx * 4);
             });
-            y += objetLines.length * 4 + 4;
+            y += objetLines.length * (compact ? 3.5 : 4) + (compact ? 3 : 4);
         }
 
         // ===== "Montants exprimés en Dhs" =====
@@ -152,7 +160,7 @@ const PdfExport = {
         doc.setTextColor(100, 100, 100);
         doc.text('Montants exprimés en Dhs', pageWidth - margin, y, { align: 'right' });
 
-        y += 6;
+        y += (compact ? 4 : 6);
 
         // ===== LINES TABLE (centered via autoTable margins) =====
         const tableHeader = [
@@ -220,18 +228,18 @@ const PdfExport = {
                 fillColor: [248, 248, 250],
                 textColor: [30, 30, 30],
                 fontStyle: 'bold',
-                fontSize: 8,
+                fontSize: compact ? 7.5 : 8,
                 lineColor: [150, 150, 150],
                 lineWidth: 0.4,
-                cellPadding: 3.5
+                cellPadding: compact ? 2 : 3.5
             },
             bodyStyles: {
-                fontSize: 8,
+                fontSize: compact ? 7.5 : 8,
                 textColor: [40, 40, 40],
                 fillColor: [255, 255, 255],
                 lineColor: [190, 190, 190],
                 lineWidth: 0.3,
-                cellPadding: 3
+                cellPadding: compact ? 1.5 : 3
             },
             alternateRowStyles: {
                 fillColor: [242, 244, 248]
@@ -249,24 +257,11 @@ const PdfExport = {
 
         let tableEndY = doc.lastAutoTable.finalY;
 
-        // ===== BOTTOM SECTION: Push totals, bank, payments, and stamp to bottom =====
+        // ===== BLOC BAS : totaux + banque + suivi des paiements + cachet =====
         const paiements = data.paiements || [];
         const hasPayments = docType === 'FACTURE' && paiements.length > 0;
-        const paymentsBlockHeight = hasPayments ? 24 + paiements.length * 5 : 0; // title + header + rows
-        const remaining = pageHeight - tableEndY - 20; // space from table end to footer
-        const bottomBlockHeight = 100 + paymentsBlockHeight; // approx height for totals + bank + payments + stamp
 
-        // Check if we have enough space; if not, add a new page
-        if (remaining < bottomBlockHeight) {
-            doc.addPage();
-            y = margin;
-            tableEndY = margin;
-        }
-
-        // Position the block: push down from table end, leaving some breathing room
-        y = Math.max(tableEndY + 10, pageHeight - bottomBlockHeight - 18);
-
-        // ===== TOTALS (right-aligned) =====
+        // Totaux (calculés d'abord pour estimer la hauteur du bloc)
         const totalsX = pageWidth - margin - 72;
         let tvaLabel = 'Total TVA';
         if (data.totalHT > 0 && data.totalTVA > 0) {
@@ -285,14 +280,37 @@ const PdfExport = {
             totals.push({ label: 'Reste à payer', value: this.formatNumber(data.resteAPayer || 0), bold: (data.resteAPayer || 0) > 0 });
         }
 
-        // Draw a thin line above totals
+        // Hauteurs estimées des sous-blocs
+        const rowGap = compact ? 5.5 : 6;
+        const totalsBlockH = totals.length * rowGap + (compact ? 6 : 7);
+        const bankBlockH = (docType === 'FACTURE')
+            ? (compact ? 4 + 3 * 4 + 6 : 5 + 3 * 4.5 + 8)
+            : 0;
+        const payBlockH = hasPayments
+            ? (compact ? 14 + paiements.length * 5 : 18 + paiements.length * 5)
+            : 0;
+        const stampBlockH = (compact ? 34 : 40) + 8; // cachet + marge
+
+        // Position du bloc : poussé vers le bas de la page pour rester sur une seule page
+        const bottomAnchor = pageHeight - (totalsBlockH + bankBlockH + payBlockH + stampBlockH) - 22;
+        let blockTop = Math.max(tableEndY + 10, bottomAnchor);
+
+        // Si le tableau est trop long pour que le bloc bas tienne sur la page,
+        // tout le bloc passe sur une nouvelle page (évite un cachet orphelin)
+        if (tableEndY + 10 > bottomAnchor) {
+            doc.addPage();
+            blockTop = margin + 4;
+        }
+        y = blockTop;
+
+        // ===== TOTALS (right-aligned) =====
         doc.setDrawColor(150, 150, 150);
         doc.setLineWidth(0.3);
         doc.line(totalsX, y - 3, pageWidth - margin, y - 3);
 
-        doc.setFontSize(8.5);
+        doc.setFontSize(compact ? 8 : 8.5);
         totals.forEach((item, idx) => {
-            const rowY = y + idx * 6;
+            const rowY = y + idx * rowGap;
             if (item.bold) {
                 doc.setFont('helvetica', 'bold');
                 doc.setTextColor(0, 0, 0);
@@ -304,18 +322,18 @@ const PdfExport = {
             doc.text(item.value, totalsX + 70, rowY, { align: 'right' });
         });
 
-        y += totals.length * 6 + 7;
+        y += totalsBlockH;
 
         // ===== BANK DETAILS (left side, for invoices) =====
         if (docType === 'FACTURE') {
             doc.setFont('helvetica', 'bold');
-            doc.setFontSize(8.5);
+            doc.setFontSize(compact ? 8 : 8.5);
             doc.setTextColor(0, 0, 0);
             doc.text('Coordonnées bancaires :', col1X, y);
-            y += 5;
+            y += compact ? 4 : 5;
 
             doc.setFont('helvetica', 'normal');
-            doc.setFontSize(8.5);
+            doc.setFontSize(compact ? 8 : 8.5);
             doc.setTextColor(60, 60, 60);
             const bankDetails = data.bankDetails || {
                 banque: 'Crédit du Maroc',
@@ -323,21 +341,21 @@ const PdfExport = {
                 rib: '021 780 0000 177030150208 49'
             };
             doc.text(`Banque : ${bankDetails.banque}`, col1X, y);
-            y += 4.5;
+            y += compact ? 4 : 4.5;
             doc.text(`Bénéficiaire : ${bankDetails.beneficiaire}`, col1X, y);
-            y += 4.5;
+            y += compact ? 4 : 4.5;
             doc.text(`RIB : ${bankDetails.rib}`, col1X, y);
-            y += 8;
+            y += compact ? 6 : 8;
         }
 
         // ===== SUIVI DES PAIEMENTS (factures avec paiements) =====
         if (hasPayments) {
             y += 2;
             doc.setFont('helvetica', 'bold');
-            doc.setFontSize(9);
+            doc.setFontSize(compact ? 8.5 : 9);
             doc.setTextColor(0, 0, 0);
             doc.text('Suivi des paiements', col1X, y);
-            y += 5;
+            y += compact ? 4 : 5;
 
             // Table header
             const payX = col1X;
@@ -357,7 +375,7 @@ const PdfExport = {
 
             // Table rows
             doc.setFont('helvetica', 'normal');
-            doc.setFontSize(8);
+            doc.setFontSize(compact ? 7.5 : 8);
             doc.setTextColor(40, 40, 40);
             paiements.forEach((p, i) => {
                 if (i % 2 === 1) {
@@ -369,20 +387,14 @@ const PdfExport = {
                 doc.text(p.mode || '', payX + payCols[0] + payCols[1] + 2, y);
                 y += 5;
             });
-            y += 3;
-        }
-
-        // Guard: si le contenu approche du bas de page, basculer sur une nouvelle page avant le cachet
-        if (y > pageHeight - 70) {
-            doc.addPage();
-            y = margin;
+            y += compact ? 2 : 3;
         }
 
         // ===== CACHET / STAMP PNG (centered, positioned dynamically) =====
         // Applied to all document types
         if (docType === 'FACTURE' || docType === 'DEVIS' || docType === 'BON DE COMMANDE' || docType === 'BON DE LIVRAISON' || docType === 'FACTURE PRO FORMA') {
-            const stampWidth = 60;
-            const stampHeight = 40;
+            const stampWidth = compact ? 52 : 60;
+            const stampHeight = compact ? 34 : 40;
             const stampX = (pageWidth - stampWidth) / 2;
             const footerLineY = (pageHeight - 16) - 3;
             const stampY = Math.max(y + 5, footerLineY - stampHeight - 8);
@@ -409,7 +421,14 @@ const PdfExport = {
         }
 
         // ===== PIÈCES JOINTES (photos ajoutées à la facture/devis) =====
-        const imageAttachments = (data.attachments || []).filter(a => (a.type || '').startsWith('image/'));
+        // Les fichiers volumineux sont stockés en IndexedDB : on les recharge ici
+        const imageAttachments = [];
+        for (const a of (data.attachments || [])) {
+            if (!(a.type || '').startsWith('image/')) continue;
+            let dataUrl = a.dataUrl;
+            if (!dataUrl && a.storeKey) dataUrl = await AttachmentStore.getWithCloud(a.storeKey);
+            if (dataUrl) imageAttachments.push({ ...a, dataUrl });
+        }
         if (imageAttachments.length > 0) {
             doc.addPage();
             doc.setFont('helvetica', 'bold');
@@ -475,24 +494,60 @@ const PdfExport = {
      */
     async downloadPDF(docType, data, filename) {
         const blob = await this.generatePDF(docType, data);
-        
-        // Trigger browser download IMMEDIATELY (no delay for user)
         const url = URL.createObjectURL(blob);
+        const name = filename || `${docType}_${data.reference}.pdf`;
+
+        // Affiche l'aperçu dans une popup : l'utilisateur choisit de télécharger ou non
+        // Nettoyage préventif : révoque l'URL précédente si la popup a été fermée via le bouton ✕
+        if (this._pendingPdf) URL.revokeObjectURL(this._pendingPdf.url);
+        this._pendingPdf = { blob, url, docType, filename: name };
+
+        Modal.ouvrir('Aperçu PDF', `
+            <div class="pdf-preview">
+                <iframe src="${url}" class="pdf-preview-frame" title="Aperçu du PDF"></iframe>
+                <div class="form-actions">
+                    <button class="btn btn-pdf" onclick="PdfExport.telechargerDepuisApercu()">⬇️ Télécharger le PDF</button>
+                    <button class="btn btn-outline" onclick="PdfExport.fermerApercu()">Fermer</button>
+                </div>
+            </div>
+        `);
+    },
+
+    /**
+     * Télécharger le PDF depuis la popup d'aperçu
+     */
+    telechargerDepuisApercu() {
+        const pending = this._pendingPdf;
+        if (!pending) return;
+
+        // Déclenche le téléchargement du fichier
         const a = document.createElement('a');
-        a.href = url;
-        a.download = filename || `${docType}_${data.reference}.pdf`;
+        a.href = pending.url;
+        a.download = pending.filename;
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-        
-        // Then save a copy to the local folder in the background
+
+        // Sauvegarde une copie dans le dossier local en arrière-plan
         if (FileStorage.isReady()) {
-            // Fire-and-forget: doesn't block the user experience
-            FileStorage.saveFile(blob, docType, filename).then(saved => {
-                if (saved) console.log(`PDF sauvegardé dans ${docType}`);
+            FileStorage.saveFile(pending.blob, pending.docType, pending.filename).then(saved => {
+                if (saved) console.log(`PDF sauvegardé dans ${pending.docType}`);
             }).catch(e => console.warn('Sauvegarde locale échouée:', e));
         }
+
+        Toast.success('PDF téléchargé avec succès');
+        this.fermerApercu();
+    },
+
+    /**
+     * Fermer la popup d'aperçu sans télécharger
+     */
+    fermerApercu() {
+        if (this._pendingPdf) {
+            URL.revokeObjectURL(this._pendingPdf.url);
+            this._pendingPdf = null;
+        }
+        Modal.fermer();
     },
 
     /**
@@ -594,6 +649,7 @@ const PdfExport = {
         return {
             reference: reference,
             date: Utils.formatDate(doc.date || new Date()),
+            dateLivraison: doc.dateLivraison ? Utils.formatDate(doc.dateLivraison) : '',
             clientType: doc.clientType || 'client',
             clientNom: client ? client.nom || client.raisonSociale || client.nomComplet : '',
             clientAdresse: client ? client.adresse || '' : '',

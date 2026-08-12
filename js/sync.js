@@ -6,14 +6,22 @@
  *  base Supabase afin que TOUTES les données soient enregistrées en ligne et
  *  visibles par tous les utilisateurs et appareils.
  *
- *  Modèle de données : une table `eqnovia_data` avec 2 colonnes :
- *    - key  (text, clé primaire) : le nom de la collection locale
- *    - data (jsonb)              : le contenu complet de la collection
+ *  Modèle de données : deux tables.
+ *    - eqnovia_data (collections) :
+ *        key  (text, clé primaire) : le nom de la collection locale
+ *        data (jsonb)              : le contenu complet de la collection
+ *    - eqnovia_attachments (pièces jointes volumineuses, stockées en IndexedDB) :
+ *        id  (text, clé primaire = storeKey de la pièce)
+ *        data (text) : contenu base64 du fichier (dataUrl)
+ *        nom, type    : métadonnées d'affichage
  *
  *  Fonctionnement :
  *   • Au démarrage : init() + pullAll() récupèrent les données du cloud.
  *   • À chaque modification locale : la collection est envoyée (push
  *     automatique via UPSERT, avec un léger délai pour regrouper).
+ *   • Les pièces jointes volumineuses sont poussées/téléchargées vers la table
+ *     dédiée ; si une pièce est absente localement, elle est rapatriée depuis
+ *     le cloud à la demande (getWithCloud).
  *   • Écoute en temps réel (postgres_changes) : si un autre utilisateur
  *     modifie des données, l'affichage est rafraîchi automatiquement.
  *   • Bouton ☁️ "Synchroniser" : envoie et reçoit manuellement.
@@ -29,6 +37,7 @@ const CloudSync = {
     _pushTimers: {},
     _lastLocalPush: {},
     _channel: null,
+    ATTACH_TABLE: 'eqnovia_attachments',
 
     /** La configuration Supabase a-t-elle été réellement remplie ? */
     isConfigured() {
@@ -67,6 +76,14 @@ const CloudSync = {
                 return false;
             }
             this.enabled = true;
+            // Vérification non bloquante : la table des pièces jointes volumineuses
+            // (les collections fonctionnent même si elle est absente)
+            try {
+                const { error: attErr } = await this._client.from(this.ATTACH_TABLE).select('id').limit(1);
+                if (attErr) {
+                    console.warn('☁️ CloudSync : table ' + this.ATTACH_TABLE + ' absente — les pièces jointes volumineuses ne seront pas synchronisées. Exécutez le script SQL de l\'étape 3 (SUPABASE.md).');
+                }
+            } catch (e) { /* silencieux */ }
             this._updateStatus(true);
             console.info('☁️ CloudSync : connecté à Supabase (' + SUPABASE_CONFIG.url + ')');
             return true;
@@ -107,10 +124,26 @@ const CloudSync = {
         }
     },
 
-    /** Envoie toutes les collections. */
+    /** Envoie toutes les collections + les pièces jointes volumineuses. */
     async pushAll() {
         for (const key of Object.values(Database.KEYS)) {
             await this.pushCollection(key);
+        }
+        await this.pushAllAttachments();
+    },
+
+    /** Envoie toutes les pièces jointes volumineuses locales vers le cloud. */
+    async pushAllAttachments() {
+        if (!this.enabled) return;
+        const factures = Database.get(Database.KEYS.FACTURES) || [];
+        for (const f of factures) {
+            for (const a of (f.attachments || [])) {
+                if (!a.storeKey) continue;
+                const dataUrl = await AttachmentStore.get(a.storeKey);
+                if (dataUrl) {
+                    await this.pushAttachment(a.storeKey, dataUrl, { nom: a.nom, type: a.type });
+                }
+            }
         }
     },
 
@@ -130,10 +163,95 @@ const CloudSync = {
                     localStorage.setItem(row.key, JSON.stringify(row.data));
                 }
             });
+            await this.pullAllAttachments();
         } catch (e) {
             console.warn('☁️ CloudSync : lecture du cloud impossible', e);
         } finally {
             this._applyingRemote = false;
+        }
+    },
+
+    /** Télécharge les pièces jointes volumineuses manquantes (référencées par les factures locales). */
+    async pullAllAttachments() {
+        if (!this.enabled) return;
+        try {
+            // Les pièces jointes n'existent que sur les factures
+            const keys = new Set();
+            (Database.get(Database.KEYS.FACTURES) || []).forEach(f =>
+                (f.attachments || []).forEach(a => { if (a.storeKey) keys.add(a.storeKey); })
+            );
+            if (keys.size === 0) return;
+            // Ne télécharger que celles absentes en IndexedDB (évite de retélécharger les gros fichiers)
+            const missing = [];
+            for (const k of keys) {
+                if (!(await AttachmentStore.get(k))) missing.push(k);
+            }
+            if (missing.length === 0) return;
+            const { data, error } = await this._client
+                .from(this.ATTACH_TABLE)
+                .select('id, data')
+                .in('id', missing);
+            if (error) throw error;
+            for (const row of (data || [])) {
+                if (row && row.id && row.data) await AttachmentStore.put(row.id, row.data);
+            }
+        } catch (e) {
+            console.warn('☁️ CloudSync : lecture des pièces jointes impossible', e);
+        }
+    },
+
+    // ─── Pièces jointes volumineuses (table dédiée) ───
+    // Les petites pièces (dataUrl dans le document) sont synchronisées avec la
+    // collection eqnovia_factures. Les volumineuses (IndexedDB) utilisent la
+    // table eqnovia_attachments : id = storeKey, data = dataUrl base64.
+
+    /** Envoie une pièce jointe volumineuse vers le cloud. */
+    async pushAttachment(storeKey, dataUrl, meta = {}) {
+        if (!this.enabled || !storeKey || !dataUrl) return;
+        try {
+            const { error } = await this._client
+                .from(this.ATTACH_TABLE)
+                .upsert({
+                    id: storeKey,
+                    data: dataUrl,
+                    nom: meta.nom || null,
+                    type: meta.type || null
+                }, { onConflict: 'id' });
+            if (error) throw error;
+        } catch (e) {
+            console.error('☁️ CloudSync : échec d\'envoi de la pièce jointe', storeKey, e);
+            Toast.warning('⚠️ Synchronisation de la pièce jointe impossible (connexion ou table ' + this.ATTACH_TABLE + ' manquante — voir SUPABASE.md)');
+        }
+    },
+
+    /** Supprime une pièce jointe volumineuse du cloud. */
+    async deleteAttachment(storeKey) {
+        if (!this.enabled || !storeKey) return;
+        try {
+            const { error } = await this._client
+                .from(this.ATTACH_TABLE)
+                .delete()
+                .eq('id', storeKey);
+            if (error) throw error;
+        } catch (e) {
+            console.warn('☁️ CloudSync : suppression cloud de la pièce jointe impossible', storeKey, e);
+        }
+    },
+
+    /** Récupère une pièce jointe volumineuse depuis le cloud (dataUrl). Retourne null si absente. */
+    async fetchAttachment(storeKey) {
+        if (!this.enabled || !storeKey) return null;
+        try {
+            const { data, error } = await this._client
+                .from(this.ATTACH_TABLE)
+                .select('data')
+                .eq('id', storeKey)
+                .maybeSingle();
+            if (error) throw error;
+            return data && data.data ? data.data : null;
+        } catch (e) {
+            console.warn('☁️ CloudSync : lecture cloud de la pièce jointe impossible', storeKey, e);
+            return null;
         }
     },
 

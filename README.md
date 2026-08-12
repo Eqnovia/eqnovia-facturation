@@ -97,8 +97,8 @@ eqnovia-facturation/
 Pour que vos données soient **enregistrées et visibles par tous les
 utilisateurs**, suivez le guide **`SUPABASE.md`** : création du projet
 Supabase (gratuit, sans carte bancaire), copie de l'URL et de la clé dans
-`js/supabase-config.js`, création de la table `eqnovia_data` (script SQL
-fourni) et activation du temps réel. Une fois configuré, le point ☁️ de
+`js/supabase-config.js`, création des tables `eqnovia_data` et
+`eqnovia_attachments` (script SQL fourni) et activation du temps réel. Une fois configuré, le point ☁️ de
 l'en-tête devient vert et toutes les données se synchronisent
 automatiquement et en temps réel entre les appareils.
 

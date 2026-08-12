@@ -114,15 +114,7 @@ const Produits = {
                 <div class="form-row">
                     <div class="form-group">
                         <label>Unité</label>
-                        <select name="unite">
-                            <option value="Pièce" ${p.unite == 'Pièce' ? 'selected' : ''}>Pièce</option>
-                            <option value="Unité" ${p.unite == 'Unité' ? 'selected' : ''}>Unité</option>
-                            <option value="Heure" ${p.unite == 'Heure' ? 'selected' : ''}>Heure</option>
-                            <option value="Jour" ${p.unite == 'Jour' ? 'selected' : ''}>Jour</option>
-                            <option value="Forfait" ${p.unite == 'Forfait' ? 'selected' : ''}>Forfait</option>
-                            <option value="KG" ${p.unite == 'KG' ? 'selected' : ''}>KG</option>
-                            <option value="Mètre" ${p.unite == 'Mètre' ? 'selected' : ''}>Mètre</option>
-                        </select>
+                        <input type="text" name="unite" list="unites-list" value="${Utils.escapeHtml(p.unite || '')}" placeholder="Choisir ou saisir une unité">
                     </div>
                 </div>
                 <div class="form-actions">

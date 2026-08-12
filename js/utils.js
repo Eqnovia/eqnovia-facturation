@@ -199,6 +199,93 @@ const FileStorage = {
 };
 
 /**
+ * ATTACHMENT STORE - Stockage IndexedDB des pièces jointes volumineuses
+ * Le localStorage (limité à ~5 Mo) ne peut pas contenir de gros fichiers en
+ * base64. Les pièces jointes volumineuses (PDF ou images lourdes) sont donc
+ * stockées ici ; le document ne conserve qu'un identifiant (storeKey).
+ * Les petites pièces restent en dataUrl dans le document (affichage + PDF).
+ */
+const AttachmentStore = {
+    DB_NAME: 'EqnoviaAttachments',
+    STORE: 'files',
+
+    _getDB() {
+        return new Promise((resolve, reject) => {
+            const request = indexedDB.open(this.DB_NAME, 1);
+            request.onupgradeneeded = (e) => {
+                const db = e.target.result;
+                if (!db.objectStoreNames.contains(this.STORE)) {
+                    db.createObjectStore(this.STORE);
+                }
+            };
+            request.onsuccess = (e) => resolve(e.target.result);
+            request.onerror = (e) => reject(e.target.error);
+        });
+    },
+
+    /** Stocke un dataUrl volumineux. Retourne true en cas de succès. */
+    async put(key, dataUrl) {
+        try {
+            const db = await this._getDB();
+            return await new Promise((resolve, reject) => {
+                const tx = db.transaction(this.STORE, 'readwrite');
+                tx.objectStore(this.STORE).put(dataUrl, key);
+                tx.oncomplete = () => resolve(true);
+                tx.onerror = (e) => reject(e.target.error);
+            });
+        } catch (e) {
+            console.error('AttachmentStore: impossible de stocker la pièce jointe', e);
+            return false;
+        }
+    },
+
+    /** Récupère un dataUrl stocké. Retourne null si absent. */
+    async get(key) {
+        try {
+            const db = await this._getDB();
+            return await new Promise((resolve, reject) => {
+                const tx = db.transaction(this.STORE, 'readonly');
+                const req = tx.objectStore(this.STORE).get(key);
+                req.onsuccess = () => resolve(req.result || null);
+                req.onerror = () => reject(req.error);
+            });
+        } catch (e) {
+            console.warn('AttachmentStore: lecture impossible', e);
+            return null;
+        }
+    },
+
+    /**
+     * Récupère un dataUrl : d'abord en local (IndexedDB), puis depuis le cloud
+     * Supabase si absent (pièce ajoutée par un autre appareil). Le résultat du
+     * cloud est mis en cache localement pour les prochains accès.
+     */
+    async getWithCloud(key) {
+        let dataUrl = await this.get(key);
+        if (!dataUrl && typeof CloudSync !== 'undefined' && CloudSync.enabled) {
+            dataUrl = await CloudSync.fetchAttachment(key);
+            if (dataUrl) await this.put(key, dataUrl); // cache local
+        }
+        return dataUrl;
+    },
+
+    /** Supprime un dataUrl stocké. */
+    async remove(key) {
+        try {
+            const db = await this._getDB();
+            return await new Promise((resolve, reject) => {
+                const tx = db.transaction(this.STORE, 'readwrite');
+                tx.objectStore(this.STORE).delete(key);
+                tx.oncomplete = () => resolve(true);
+                tx.onerror = (e) => reject(e.target.error);
+            });
+        } catch (e) {
+            return false;
+        }
+    }
+};
+
+/**
  * UTILS - Helper functions for formatting, modal, toast, etc.
  */
 const Utils = {

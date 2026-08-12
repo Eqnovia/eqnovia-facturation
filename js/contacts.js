@@ -50,7 +50,6 @@ const Contacts = {
             <thead>
                 <tr>
                     <th>Contact</th>
-                    <th>Ville</th>
                     <th>ICE</th>
                     <th>Type</th>
                     <th>Choisir le type</th>
@@ -76,7 +75,6 @@ const Contacts = {
 
             html += `<tr>
                 <td><strong>${Utils.escapeHtml(c.nom || '')}</strong></td>
-                <td>${Utils.escapeHtml(c.ville || '-')}</td>
                 <td>${Utils.escapeHtml(c.ice || '-')}</td>
                 <td>${badge}</td>
                 <td class="actions">

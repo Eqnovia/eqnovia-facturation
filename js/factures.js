@@ -37,6 +37,13 @@ const Factures = {
         if (nbPieces > 0) msg += `\n⚠️ ${nbPieces} pièce(s) jointe(s) seront également supprimées.`;
         msg += `\n\nCette action est irréversible.`;
         if (!confirm(msg)) return;
+        // Nettoyer les pièces jointes volumineuses (IndexedDB + cloud Supabase)
+        (f.attachments || []).forEach(a => {
+            if (a.storeKey) {
+                AttachmentStore.remove(a.storeKey);
+                CloudSync.deleteAttachment(a.storeKey);
+            }
+        });
         Database.delete(this.KEY, id);
         this.afficher();
         Toast.success('Facture supprimée avec succès');
@@ -90,8 +97,8 @@ const Factures = {
                 <td class="actions">
                     <button class="btn btn-sm btn-outline" onclick="Factures.voir(${f.id})">👁️</button>
                     ${editBtn}
-                    <button class="btn btn-sm btn-success" onclick="Factures.exportPDF(${f.id})">📄</button>
-                    <button class="btn btn-sm btn-warning" onclick="Factures.exportExcel(${f.id})">📊</button>
+                    <button class="btn btn-sm btn-pdf" onclick="Factures.exportPDF(${f.id})">📄</button>
+                    <button class="btn btn-sm btn-excel" onclick="Factures.exportExcel(${f.id})">📊</button>
                     <button class="btn btn-sm btn-danger" onclick="Factures.supprimer(${f.id})">🗑️</button>
                 </td>
             </tr>`;
@@ -164,18 +171,22 @@ const Factures = {
         const paiementsHtml = this.renderPaiementsHtml(doc);
         const attachmentsHtml = this.renderAttachmentsHtml(doc);
 
+        // Bon de livraison : un seul par facture
+        const blExistant = Livraisons.getAll().find(l => l.sourceType === 'facture' && String(l.sourceId) === String(doc.id));
+        const blButton = blExistant
+            ? `<button class="btn btn-outline" onclick="Livraisons.voir(${blExistant.id})" title="Bon de livraison déjà créé">📦 ${blExistant.reference}</button>`
+            : `<button class="btn btn-outline" onclick="Factures.convertirLivraison(${doc.id})">📦 Bon de Livraison</button>`;
+
         const actionsHtml = isPaid
-            ? `<button class="btn btn-success" onclick="Factures.exportPDF(${doc.id})">📄 PDF</button>
-               <button class="btn btn-warning" onclick="Factures.exportExcel(${doc.id})">📊 Excel</button>
+            ? `<button class="btn btn-pdf" onclick="Factures.exportPDF(${doc.id})">📄 PDF</button>
+               <button class="btn btn-excel" onclick="Factures.exportExcel(${doc.id})">📊 Excel</button>
                <button class="btn btn-warning" onclick="Factures.editer(${doc.id})" title="Déverrouiller et modifier (mot de passe requis)">🔓 Déverrouiller</button>
-               <button class="btn btn-outline" onclick="Factures.convertirProforma(${doc.id})">📑 Pro Forma</button>
-               <button class="btn btn-outline" onclick="Factures.convertirLivraison(${doc.id})">📦 Bon de Livraison</button>
+               ${blButton}
                <span class="locked-badge" title="Facture payée - verrouillée">🔒 Verrouillée</span>`
-            : `<button class="btn btn-success" onclick="Factures.exportPDF(${doc.id})">📄 PDF</button>
-               <button class="btn btn-warning" onclick="Factures.exportExcel(${doc.id})">📊 Excel</button>
+            : `<button class="btn btn-pdf" onclick="Factures.exportPDF(${doc.id})">📄 PDF</button>
+               <button class="btn btn-excel" onclick="Factures.exportExcel(${doc.id})">📊 Excel</button>
                <button class="btn btn-primary" onclick="Factures.editer(${doc.id})">✏️ Modifier</button>
-               <button class="btn btn-outline" onclick="Factures.convertirProforma(${doc.id})">📑 Pro Forma</button>
-               <button class="btn btn-outline" onclick="Factures.convertirLivraison(${doc.id})">📦 Bon de Livraison</button>`;
+               ${blButton}`;
 
         Modal.ouvrir(`Facture ${doc.reference}`, `
             <div class="document-preview">
@@ -337,15 +348,17 @@ const Factures = {
         } else {
             items = atts.map((a, idx) => {
                 const isImage = (a.type || '').startsWith('image/');
-                const thumb = isImage
+                // Aperçu direct uniquement pour les petites pièces (dataUrl dans le doc)
+                const thumb = isImage && a.dataUrl
                     ? `<img class="attachment-thumb" src="${a.dataUrl}" alt="">`
-                    : `<div class="attachment-thumb attachment-thumb-pdf">📄</div>`;
+                    : `<div class="attachment-thumb attachment-thumb-pdf">${isImage ? '🖼️' : '📄'}</div>`;
+                const taille = a.storeKey ? (a.size || 0) : ((a.dataUrl || '').length);
                 const delBtn = isPaid ? '' : `<button class="btn btn-sm btn-danger" onclick="Factures.supprimerPieceJointe(${doc.id}, ${idx})" title="Supprimer">🗑️</button>`;
                 return `<div class="attachment-item">
                     ${thumb}
                     <div class="attachment-info">
                         <span class="attachment-name" title="${Utils.escapeHtml(a.nom)}">${Utils.escapeHtml(a.nom)}</span>
-                        <span class="attachment-meta">${Utils.formatDate(a.date)} · ${Utils.formatBytes((a.dataUrl || '').length)}</span>
+                        <span class="attachment-meta">${Utils.formatDate(a.date)} · ${Utils.formatBytes(taille)}</span>
                     </div>
                     <div class="attachment-actions">
                         <button class="btn btn-sm btn-outline" onclick="Factures.ouvrirPieceJointe(${doc.id}, ${idx})" title="Ouvrir">👁️</button>
@@ -379,21 +392,37 @@ const Factures = {
                 const dataUrl = isImage
                     ? await Utils.compressImage(file)
                     : await Utils.fileToDataUrl(file);
-                // Limite de taille pour préserver le localStorage (≈ 1,8 Mo)
-                if (dataUrl.length > 2500000) {
-                    return Toast.error('Fichier trop volumineux (max ~1,8 Mo)');
-                }
-                const atts = f.attachments || [];
-                atts.push({
+
+                const att = {
                     id: Utils.generateId(),
                     nom: file.name,
                     type: isImage ? 'image/jpeg' : 'application/pdf',
-                    dataUrl: dataUrl,
                     date: new Date().toISOString()
-                });
+                };
+
+                // Fichiers volumineux → IndexedDB (le localStorage est limité à ~5 Mo).
+                // Les petites pièces restent en dataUrl dans le document (affichage + PDF).
+                if (dataUrl.length > 2500000) {
+                    const storeKey = att.id;
+                    const ok = await AttachmentStore.put(storeKey, dataUrl);
+                    if (!ok) return Toast.error('Impossible de stocker ce fichier (trop volumineux)');
+                    att.storeKey = storeKey;
+                    att.size = dataUrl.length; // taille approx. pour l'affichage
+                    // Synchroniser la pièce volumineuse vers le cloud (table dédiée)
+                    CloudSync.pushAttachment(storeKey, dataUrl, { nom: att.nom, type: att.type });
+                } else {
+                    att.dataUrl = dataUrl;
+                }
+
+                const atts = f.attachments || [];
+                atts.push(att);
                 try {
                     this.modifier(id, { attachments: atts });
                 } catch (e) {
+                    if (att.storeKey) {
+                        AttachmentStore.remove(att.storeKey);
+                        CloudSync.deleteAttachment(att.storeKey); // évite une pièce orpheline dans le cloud
+                    }
                     Toast.error('Stockage plein : supprimez d\'autres pièces jointes avant d\'en ajouter');
                     return;
                 }
@@ -413,18 +442,26 @@ const Factures = {
         const atts = f.attachments || [];
         if (idx < 0 || idx >= atts.length) return;
         if (!confirm('Supprimer cette pièce jointe ?')) return;
+        const att = atts[idx];
+        if (att && att.storeKey) {
+            AttachmentStore.remove(att.storeKey); // nettoie IndexedDB
+            CloudSync.deleteAttachment(att.storeKey); // nettoie le cloud
+        }
         atts.splice(idx, 1);
         this.modifier(id, { attachments: atts });
         Toast.success('Pièce jointe supprimée');
         this.voir(id);
     },
 
-    telechargerPieceJointe(id, idx) {
+    async telechargerPieceJointe(id, idx) {
         const f = this.getById(id);
         const att = (f.attachments || [])[idx];
         if (!att) return Toast.error('Pièce jointe introuvable');
         try {
-            const bin = atob(att.dataUrl.split(',')[1]);
+            // Les fichiers volumineux sont stockés en IndexedDB : on les recharge
+            const dataUrl = att.dataUrl || (att.storeKey ? await AttachmentStore.getWithCloud(att.storeKey) : null);
+            if (!dataUrl) return Toast.error('Pièce jointe introuvable');
+            const bin = atob(dataUrl.split(',')[1]);
             const bytes = new Uint8Array(bin.length);
             for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
             const blob = new Blob([bytes], { type: att.type });
@@ -441,13 +478,16 @@ const Factures = {
         }
     },
 
-    ouvrirPieceJointe(id, idx) {
+    async ouvrirPieceJointe(id, idx) {
         const f = this.getById(id);
         const att = (f.attachments || [])[idx];
         if (!att) return Toast.error('Pièce jointe introuvable');
+        // Les fichiers volumineux sont stockés en IndexedDB (ou sur le cloud) : on les recharge
+        const dataUrl = att.dataUrl || (att.storeKey ? await AttachmentStore.getWithCloud(att.storeKey) : null);
+        if (!dataUrl) return Toast.error('Pièce jointe introuvable');
         // Convertir en Blob URL pour un affichage fiable (data: URLs trop longues sont bloquées par certains navigateurs)
         try {
-            const bin = atob(att.dataUrl.split(',')[1]);
+            const bin = atob(dataUrl.split(',')[1]);
             const bytes = new Uint8Array(bin.length);
             for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
             const blob = new Blob([bytes], { type: att.type });
@@ -455,7 +495,7 @@ const Factures = {
             window.open(url, '_blank');
             setTimeout(() => URL.revokeObjectURL(url), 60000);
         } catch (e) {
-            window.open(att.dataUrl, '_blank');
+            window.open(dataUrl, '_blank');
         }
     },
 
@@ -508,6 +548,12 @@ const Factures = {
         const facture = this.getById(id);
         if (!facture) return Toast.error('Facture introuvable');
 
+        // Une seule conversion autorisée : un bon de livraison par facture
+        const blExistant = Livraisons.getAll().find(l => l.sourceType === 'facture' && String(l.sourceId) === String(id));
+        if (blExistant) {
+            return Toast.error(`Un bon de livraison existe déjà pour cette facture (${blExistant.reference})`);
+        }
+
         if (!confirm(`📦 Convertir la facture ${facture.reference} en Bon de Livraison ?\n\n` +
             `Client : ${facture.clientNom || '-'}\n` +
             `Articles : ${(facture.lignes || []).length} ligne(s)\n\n` +
@@ -529,6 +575,8 @@ const Factures = {
         livraisonData.totalHT = totalsLivraison.totalHT;
         livraisonData.totalTVA = totalsLivraison.totalTVA;
         livraisonData.totalTTC = totalsLivraison.totalTTC;
+        livraisonData.sourceType = 'facture';
+        livraisonData.sourceId = facture.id;
 
         const saved = Livraisons.ajouter(livraisonData);
         Toast.success(`Facture convertie en Bon de Livraison ${saved.reference}`);
@@ -553,13 +601,7 @@ const Factures = {
                     <option value="20" ${(l.tva || 0) == 20 ? 'selected' : ''}>20%</option>
                 </select></td>
                 <td><input type="number" name="quantite" class="line-qty" value="${l.quantite || 1}" min="0.01" step="0.01"></td>
-                <td><select name="unite" class="line-unite">
-                    <option value="Pièce" ${l.unite == 'Pièce' ? 'selected' : ''}>Pièce</option>
-                    <option value="Heure" ${l.unite == 'Heure' ? 'selected' : ''}>H</option>
-                    <option value="Jour" ${l.unite == 'Jour' ? 'selected' : ''}>J</option>
-                    <option value="Forfait" ${l.unite == 'Forfait' ? 'selected' : ''}>Forfait</option>
-                    <option value="Unité" ${l.unite == 'Unité' ? 'selected' : ''}>Unité</option>
-                </select></td>
+                <td><input type="text" name="unite" class="line-unite" list="unites-list" value="${Utils.escapeHtml(l.unite || '')}" placeholder="Choisir ou saisir une unité"></td>
                 <td><input type="number" name="prixUnitaire" class="line-price" value="${l.prixUnitaire || 0}" min="0" step="0.01"></td>
                 <td class="line-total">${Utils.formatMoney((l.quantite || 0) * (l.prixUnitaire || 0))}</td>
                 <td><button type="button" class="remove-line-btn" onclick="Factures.supprimerLigne(this)">×</button></td>
@@ -632,9 +674,7 @@ const Factures = {
                 <option value="0">0%</option><option value="7">7%</option><option value="10">10%</option><option value="14">14%</option><option value="20" selected>20%</option>
             </select></td>
             <td><input type="number" name="quantite" class="line-qty" value="1" min="0.01" step="0.01"></td>
-            <td><select name="unite" class="line-unite">
-                <option value="Pièce">Pièce</option><option value="Heure">H</option><option value="Jour">J</option><option value="Forfait">Forfait</option><option value="Unité">Unité</option>
-            </select></td>
+            <td><input type="text" name="unite" class="line-unite" list="unites-list" value="" placeholder="Choisir ou saisir une unité"></td>
             <td><input type="number" name="prixUnitaire" class="line-price" value="0" min="0" step="0.01"></td>
             <td class="line-total">0,00 Dhs</td>
             <td><button type="button" class="remove-line-btn" onclick="Factures.supprimerLigne(this)">×</button></td>
@@ -746,7 +786,6 @@ const Factures = {
         data.attachments = doc.attachments || [];
 
         await PdfExport.downloadPDF('FACTURE', data, `Facture_${doc.reference}.pdf`);
-        Toast.success('PDF téléchargé avec succès');
     },
 
     exportExcel(id) {

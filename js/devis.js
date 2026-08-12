@@ -29,19 +29,26 @@ const Devis = {
         }
 
         let html = `<table class="data-table"><thead><tr><th>Réf.</th><th>Client</th><th>Date</th><th>Total TTC</th><th>Statut</th><th>Actions</th></tr></thead><tbody>`;
+        // Une facture par devis : liste des factures créées à partir de devis
+        const factures = Factures.getAll().filter(f => f.sourceType === 'devis');
         filtered.forEach(d => {
+            const factureExistante = factures.find(f => String(f.sourceId) === String(d.id));
             html += `<tr>
                 <td><strong>${Utils.escapeHtml(d.reference || '')}</strong></td>
                 <td>${Utils.escapeHtml(d.clientNom || '')}</td>
                 <td>${Utils.formatDate(d.date)}</td>
                 <td>${Utils.formatMoney(d.totalTTC || 0)}</td>
-                <td><span class="status-badge status-attente">${d.statut || 'En attente'}</span></td>
+                <td><span class="status-badge ${this.getStatutClass(d.statut)}">${d.statut || 'En attente'}</span></td>
                 <td class="actions">
                     <button class="btn btn-sm btn-outline" onclick="Devis.voir(${d.id})">👁️</button>
                     <button class="btn btn-sm btn-warning" onclick="Devis.editer(${d.id})">✏️</button>
-                    <button class="btn btn-sm btn-success" onclick="Devis.exportPDF(${d.id})">📄</button>
-                    <button class="btn btn-sm btn-warning" onclick="Devis.exportExcel(${d.id})">📊</button>
-                    <button class="btn btn-sm btn-primary" onclick="Devis.convertirFacture(${d.id})">📋</button>
+                    <button class="btn btn-sm btn-pdf" onclick="Devis.exportPDF(${d.id})">📄</button>
+                    <button class="btn btn-sm btn-excel" onclick="Devis.exportExcel(${d.id})">📊</button>
+                    ${factureExistante
+                        ? `<button class="btn btn-sm btn-success" onclick="Factures.voir(${factureExistante.id})" title="Facture créée : ${factureExistante.reference}">📋</button>`
+                        : d.statut === 'Refusé'
+                            ? `<button class="btn btn-sm btn-danger" title="Devis refusé : conversion impossible" disabled>📋</button>`
+                            : `<button class="btn btn-sm btn-primary" onclick="Devis.convertirFacture(${d.id})">📋</button>`}
                     <button class="btn btn-sm btn-danger" onclick="Devis.supprimer(${d.id})">🗑️</button>
                 </td>
             </tr>`;
@@ -63,6 +70,8 @@ const Devis = {
     voir(id) {
         const d = this.getById(id);
         if (!d) return Toast.error('Devis introuvable');
+        // Une facture par devis : vérifier si une facture a déjà été créée
+        const factureExistante = Factures.getAll().find(f => f.sourceType === 'devis' && String(f.sourceId) === String(id));
         let linesHtml = '';
         (d.lignes || []).forEach(l => {
             linesHtml += `<tr><td>${Utils.escapeHtml(l.designation || '')}</td><td>${l.tva || 0}%</td><td>${l.quantite || 0}</td><td>${Utils.escapeHtml(l.unite || '')}</td><td style="text-align:right">${Utils.formatMoney(l.prixUnitaire || 0)}</td><td style="text-align:right">${Utils.formatMoney((l.quantite || 0) * (l.prixUnitaire || 0))}</td></tr>`;
@@ -70,14 +79,20 @@ const Devis = {
 
         Modal.ouvrir(`Devis ${d.reference}`, `
             <div class="document-preview">
-                <div class="preview-header"><div class="preview-company"><h2>Eqnovia</h2><p>${Utils.escapeHtml(d.clientNom || '')}</p></div><div class="preview-title"><h1>DEVIS</h1><p>N°: ${d.reference}</p><p>Date: ${Utils.formatDate(d.date)}</p><span class="status-badge status-attente">En attente</span></div></div>
+                <div class="preview-header"><div class="preview-company"><h2>Eqnovia</h2><p>${Utils.escapeHtml(d.clientNom || '')}</p></div><div class="preview-title"><h1>DEVIS</h1><p>N°: ${d.reference}</p><p>Date: ${Utils.formatDate(d.date)}</p><span class="status-badge ${this.getStatutClass(d.statut)}">${d.statut || 'En attente'}</span></div></div>
                 <div class="preview-info"><div class="preview-client"><h3>Client</h3><p>${Utils.escapeHtml(d.clientNom || '')}</p><p>${Utils.escapeHtml(d.clientAdresse || '')}</p></div><div class="preview-details"><h3>Détails</h3><p>Total HT: ${Utils.formatMoney(d.totalHT || 0)}</p><p>TVA: ${Utils.formatMoney(d.totalTVA || 0)}</p><p><strong>Total TTC: ${Utils.formatMoney(d.totalTTC || 0)}</strong></p></div></div>
                 <table class="lines-table"><thead><tr><th>Désignation</th><th>TVA</th><th>Qté</th><th>Unité</th><th>Prix unitaire</th><th>Total</th></tr></thead><tbody>${linesHtml}</tbody></table>
                 <div class="form-actions">
-                    <button class="btn btn-success" onclick="Devis.exportPDF(${d.id})">📄 PDF</button>
-                    <button class="btn btn-warning" onclick="Devis.exportExcel(${d.id})">📊 Excel</button>
+                    <button class="btn btn-pdf" onclick="Devis.exportPDF(${d.id})">📄 PDF</button>
+                    <button class="btn btn-excel" onclick="Devis.exportExcel(${d.id})">📊 Excel</button>
                     <button class="btn btn-primary" onclick="Devis.editer(${d.id})">✏️ Modifier</button>
-                    <button class="btn btn-primary" onclick="Devis.convertirFacture(${d.id})">📋 Convertir en Facture</button>
+                    ${factureExistante
+                        ? `<button class="btn btn-success" onclick="Factures.voir(${factureExistante.id})">📋 Facture ${factureExistante.reference}</button>`
+                        : d.statut === 'Refusé'
+                            ? `<button class="btn btn-danger" title="Devis refusé : conversion impossible" disabled>📋 Convertir en Facture</button>`
+                            : `<button class="btn btn-primary" onclick="Devis.convertirFacture(${d.id})">📋 Convertir en Facture</button>`}
+                    <button class="btn btn-success" onclick="Devis.changerStatut(${d.id}, 'Confirmé')" ${d.statut === 'Confirmé' ? 'disabled' : ''}>✅ Confirmer</button>
+                    <button class="btn btn-danger" onclick="Devis.changerStatut(${d.id}, 'Refusé')" ${d.statut === 'Refusé' ? 'disabled' : ''}>❌ Refuser</button>
                     <button class="btn btn-outline" onclick="Modal.fermer()">Fermer</button>
                 </div>
             </div>
@@ -93,7 +108,7 @@ const Devis = {
             linesHtml += `<tr class="line-row"><td><input type="text" name="designation" class="line-designation" value="${Utils.escapeHtml(l.designation || '')}"></td>
                 <td><select name="tva" class="line-tva">${[0,7,10,14,20].map(v => `<option value="${v}" ${(l.tva||0)==v?'selected':''}>${v}%</option>`).join('')}</select></td>
                 <td><input type="number" name="quantite" class="line-qty" value="${l.quantite || 1}" min="0.01" step="0.01"></td>
-                <td><select name="unite" class="line-unite">${['Pièce','Heure','Jour','Forfait','Unité'].map(u => `<option value="${u}" ${l.unite==u?'selected':''}>${u}</option>`).join('')}</select></td>
+                <td><input type="text" name="unite" class="line-unite" list="unites-list" value="${Utils.escapeHtml(l.unite || '')}" placeholder="Choisir ou saisir une unité"></td>
                 <td><input type="number" name="prixUnitaire" class="line-price" value="${l.prixUnitaire || 0}" min="0" step="0.01"></td>
                 <td class="line-total">${Utils.formatMoney((l.quantite||0)*(l.prixUnitaire||0))}</td>
                 <td><button type="button" class="remove-line-btn" onclick="Devis.supprimerLigne(this)">×</button></td></tr>`;
@@ -106,6 +121,10 @@ const Devis = {
                     <div class="form-group"><label>Client *</label>
                         <select name="clientId" required><option value="">Sélectionner un client</option>${clients.map(c => `<option value="${c.id}" ${d.clientId==c.id?'selected':''}>${Utils.escapeHtml(c.nom||c.raisonSociale||'')}</option>`).join('')}</select></div>
                     <div class="form-group"><label>Date</label><input type="date" name="date" value="${Utils.formatDateInput(d.date||new Date())}"></div>
+                    <div class="form-group"><label>Statut</label>
+                        <select name="statut">
+                            ${['En attente','Envoyé','Confirmé','Refusé'].map(s => `<option value="${s}" ${d.statut==s?'selected':''}>${s}</option>`).join('')}
+                        </select></div>
                 </div>
                 <div class="form-group"><label>Objet</label><input type="text" name="objet" value="${Utils.escapeHtml(d.objet||'')}"></div>
                 <div class="document-lines">
@@ -128,7 +147,7 @@ const Devis = {
         row.innerHTML = `<td><input type="text" name="designation" class="line-designation" placeholder="Désignation"></td>
             <td><select name="tva" class="line-tva">${[0,7,10,14,20].map(v => `<option value="${v}" ${v==20?'selected':''}>${v}%</option>`).join('')}</select></td>
             <td><input type="number" name="quantite" class="line-qty" value="1" min="0.01" step="0.01"></td>
-            <td><select name="unite" class="line-unite">${['Pièce','Heure','Jour','Forfait','Unité'].map(u => `<option value="${u}">${u}</option>`).join('')}</select></td>
+            <td><input type="text" name="unite" class="line-unite" list="unites-list" value="" placeholder="Choisir ou saisir une unité"></td>
             <td><input type="number" name="prixUnitaire" class="line-price" value="0" min="0" step="0.01"></td>
             <td class="line-total">0,00 Dhs</td>
             <td><button type="button" class="remove-line-btn" onclick="Devis.supprimerLigne(this)">×</button></td>`;
@@ -183,7 +202,7 @@ const Devis = {
             clientId, clientNom: client.nom || client.raisonSociale || '', clientAdresse: client.adresse || '', clientVille: client.ville || '', clientIce: client.ice || '', clientRC: client.rc || '',
             date: data.get('date') || new Date().toISOString().split('T')[0],
             objet: data.get('objet') || '',
-            lignes, totalHT: totals.totalHT, totalTVA: totals.totalTVA, totalTTC: totals.totalTTC, statut: 'En attente'
+            lignes, totalHT: totals.totalHT, totalTVA: totals.totalTVA, totalTTC: totals.totalTTC, statut: data.get('statut') || 'En attente'
         };
 
         const id = data.get('id');
@@ -198,12 +217,29 @@ const Devis = {
 
     filtrer() { this.afficher(); },
 
+    getStatutClass(statut) {
+        switch (statut) {
+            case 'Envoyé': return 'status-envoye';
+            case 'Confirmé': return 'status-confirme';
+            case 'Refusé': return 'status-refuse';
+            default: return 'status-attente';
+        }
+    },
+
+    changerStatut(id, nouveauStatut) {
+        const d = this.getById(id);
+        if (!d) return Toast.error('Devis introuvable');
+        if (d.statut === nouveauStatut) return;
+        this.modifier(id, { statut: nouveauStatut });
+        Toast.success(`Devis ${d.reference} marqué « ${nouveauStatut} »`);
+        this.voir(id);
+    },
+
     async exportPDF(id) {
         const doc = this.getById(id);
         if (!doc) return Toast.error('Devis introuvable');
         const data = PdfExport.prepareDocumentData(doc, { nom: doc.clientNom, adresse: doc.clientAdresse, ville: doc.clientVille, ice: doc.clientIce, rc: doc.clientRC }, doc.lignes, doc.reference, { totalHT: doc.totalHT, totalTVA: doc.totalTVA, totalTTC: doc.totalTTC }, 'DEVIS');
         await PdfExport.downloadPDF('DEVIS', data, `Devis_${doc.reference}.pdf`);
-        Toast.success('PDF téléchargé avec succès');
     },
 
     exportExcel(id) {
@@ -218,6 +254,17 @@ const Devis = {
         const devis = this.getById(id);
         if (!devis) return Toast.error('Devis introuvable');
 
+        // Un devis refusé ne peut pas être converti en facture
+        if (devis.statut === 'Refusé') {
+            return Toast.error(`Le devis ${devis.reference} est refusé : conversion en facture impossible.`);
+        }
+
+        // Une seule conversion autorisée : une facture par devis
+        const factureExistante = Factures.getAll().find(f => f.sourceType === 'devis' && String(f.sourceId) === String(id));
+        if (factureExistante) {
+            return Toast.error(`Une facture existe déjà pour ce devis (${factureExistante.reference})`);
+        }
+
         if (!confirm(`📋 Convertir le devis ${devis.reference} en facture ?\n\n` +
             `Client : ${devis.clientNom || '-'}\n` +
             `Montant TTC : ${Utils.formatMoney(devis.totalTTC || 0)}\n\n` +
@@ -231,6 +278,8 @@ const Devis = {
         delete factureData.reference;
         delete factureData.createdAt;
         factureData.statut = 'Impayée';
+        factureData.sourceType = 'devis';
+        factureData.sourceId = devis.id;
 
         const saved = Factures.ajouter(factureData);
         Toast.success(`Devis converti en Facture ${saved.reference}`);

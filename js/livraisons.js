@@ -37,8 +37,8 @@ const Livraisons = {
                 <td class="actions">
                     <button class="btn btn-sm btn-outline" onclick="Livraisons.voir(${d.id})">👁️</button>
                     <button class="btn btn-sm btn-warning" onclick="Livraisons.editer(${d.id})">✏️</button>
-                    <button class="btn btn-sm btn-success" onclick="Livraisons.exportPDF(${d.id})">📄</button>
-                    <button class="btn btn-sm btn-warning" onclick="Livraisons.exportExcel(${d.id})">📊</button>
+                    <button class="btn btn-sm btn-pdf" onclick="Livraisons.exportPDF(${d.id})">📄</button>
+                    <button class="btn btn-sm btn-excel" onclick="Livraisons.exportExcel(${d.id})">📊</button>
                     <button class="btn btn-sm btn-danger" onclick="Livraisons.supprimer(${d.id})">🗑️</button>
                 </td>
             </tr>`;
@@ -71,8 +71,8 @@ const Livraisons = {
                 <div class="preview-info"><div class="preview-client"><h3>Client</h3><p>${Utils.escapeHtml(d.clientNom || '')}</p><p>${Utils.escapeHtml(d.clientAdresse || '')}</p></div></div>
                 <table class="lines-table"><thead><tr><th>Désignation</th><th>Qté</th><th>Unité</th><th>Total</th></tr></thead><tbody>${linesHtml}</tbody></table>
                 <div class="form-actions">
-                    <button class="btn btn-success" onclick="Livraisons.exportPDF(${d.id})">📄 PDF</button>
-                    <button class="btn btn-warning" onclick="Livraisons.exportExcel(${d.id})">📊 Excel</button>
+                    <button class="btn btn-pdf" onclick="Livraisons.exportPDF(${d.id})">📄 PDF</button>
+                    <button class="btn btn-excel" onclick="Livraisons.exportExcel(${d.id})">📊 Excel</button>
                     <button class="btn btn-primary" onclick="Livraisons.editer(${d.id})">✏️ Modifier</button>
                     <button class="btn btn-outline" onclick="Modal.fermer()">Fermer</button>
                 </div>
@@ -88,7 +88,7 @@ const Livraisons = {
         lignes.forEach((l, i) => {
             linesHtml += `<tr class="line-row"><td><input type="text" name="designation" class="line-designation" value="${Utils.escapeHtml(l.designation || '')}"></td>
                 <td><input type="number" name="quantite" class="line-qty" value="${l.quantite || 1}" min="0.01" step="0.01"></td>
-                <td><select name="unite" class="line-unite">${['Pièce','Unité','KG','Mètre','Boîte','Carton'].map(u => `<option value="${u}" ${l.unite==u?'selected':''}>${u}</option>`).join('')}</select></td>
+                <td><input type="text" name="unite" class="line-unite" list="unites-list" value="${Utils.escapeHtml(l.unite || '')}" placeholder="Choisir ou saisir une unité"></td>
                 <td class="line-total">${Utils.formatMoney((l.quantite||0)*(l.prixUnitaire||0))}</td>
                 <td><button type="button" class="remove-line-btn" onclick="Livraisons.supprimerLigne(this)">×</button></td></tr>`;
         });
@@ -119,7 +119,7 @@ const Livraisons = {
         const row = document.createElement('tr'); row.className = 'line-row';
         row.innerHTML = `<td><input type="text" name="designation" class="line-designation" placeholder="Désignation"></td>
             <td><input type="number" name="quantite" class="line-qty" value="1" min="0.01" step="0.01"></td>
-            <td><select name="unite" class="line-unite">${['Pièce','Unité','KG','Mètre','Boîte','Carton'].map(u => `<option value="${u}">${u}</option>`).join('')}</select></td>
+            <td><input type="text" name="unite" class="line-unite" list="unites-list" value="" placeholder="Choisir ou saisir une unité"></td>
             <td class="line-total">0,00 Dhs</td>
             <td><button type="button" class="remove-line-btn" onclick="Livraisons.supprimerLigne(this)">×</button></td>`;
         container.appendChild(row);
@@ -173,7 +173,6 @@ const Livraisons = {
         if (!doc) return Toast.error('Bon de livraison introuvable');
         const data = PdfExport.prepareDocumentData(doc, { nom: doc.clientNom, adresse: doc.clientAdresse, ville: doc.clientVille, ice: doc.clientIce, rc: doc.clientRC }, doc.lignes, doc.reference, { totalHT: doc.totalHT, totalTVA: doc.totalTVA, totalTTC: doc.totalTTC }, 'BON DE LIVRAISON');
         await PdfExport.downloadPDF('BON DE LIVRAISON', data, `BL_${doc.reference}.pdf`);
-        Toast.success('PDF téléchargé avec succès');
     },
 
     exportExcel(id) {
