@@ -1,15 +1,9 @@
 # ☁️ Synchronisation en ligne avec Supabase
 
-Vos données (clients, fournisseurs, services, factures, devis, commandes,
+Les données (clients, fournisseurs, services, factures, devis, commandes,
 livraisons, pro forma) peuvent être **enregistrées en ligne et visibles par
 tous les utilisateurs et appareils**, gratuitement, grâce à **Supabase**
 (PostgreSQL hébergé).
-
-✅ **Aucune carte bancaire** — le plan gratuit suffit.
-✅ **Temps réel** — les changements des autres utilisateurs apparaissent
-automatiquement.
-✅ Aucun serveur à installer : l'application communique directement avec
-Supabase depuis le navigateur.
 
 ---
 
