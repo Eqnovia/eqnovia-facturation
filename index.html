@@ -25,8 +25,8 @@
                     <span class="icon">☁️</span> Cloud
                 </button>
                 <span id="cloud-status-dot" class="folder-dot folder-dot-inactive" title="Cloud non configuré"></span>
-                <button class="btn btn-folder" onclick="FileStorage.setupFolder()" title="Configurer le dossier de sauvegarde sur le Bureau">
-                    <span class="icon">📁</span> Dossier local
+                <button id="folder-config-btn" class="btn btn-folder" onclick="FileStorage.reconfigurerDossier()" title="Configurer le dossier de sauvegarde sur le Bureau">
+                    <span class="icon">📁</span> <span class="folder-config-label">Dossier local</span>
                 </button>
                 <span id="folder-status-dot" class="folder-dot folder-dot-inactive" title="Dossier non configuré"></span>
             </div>
@@ -260,7 +260,7 @@
     <script src="js/database.js?v=20260806e"></script>
     <script src="js/supabase-config.js?v=20260806c"></script>
     <script src="js/sync.js?v=20260806d"></script>
-    <script src="js/utils.js?v=20260806j"></script>
+    <script src="js/utils.js?v=20260806k"></script>
     <script src="js/logo_loader.js?v=20260806b"></script>
     <script src="cache_loader.js?v=20260806b"></script>
     <script src="js/clients.js?v=20260806b"></script>

@@ -31,7 +31,7 @@ const Commandes = {
         let html = `<table class="data-table"><thead><tr><th>Réf.</th><th>Fournisseur</th><th>Date</th><th>Livraison</th><th>Total TTC</th><th>Actions</th></tr></thead><tbody>`;
         filtered.forEach(d => {
             html += `<tr>
-                <td><strong>${Utils.escapeHtml(d.reference || '')}</strong></td>
+                <td><strong>${Utils.escapeHtml(d.reference || '')}</strong>${d.copieLocale ? ' <span class="copie-locale-badge" title="Copie PDF enregistrée dans le dossier local">📁</span>' : ''}</td>
                 <td>${Utils.escapeHtml(d.fournisseurNom || d.clientNom || '')}</td>
                 <td>${Utils.formatDate(d.date)}</td>
                 <td>${d.dateLivraison ? Utils.formatDate(d.dateLivraison) : '<span style="opacity:.5">—</span>'}</td>
@@ -201,8 +201,15 @@ const Commandes = {
         };
 
         const id = data.get('id');
-        if (id) { this.modifier(parseInt(id), docData); Toast.success('Commande modifiée avec succès'); }
-        else { const saved = this.ajouter(docData); Toast.success(`Commande ${saved.reference} créée avec succès`); }
+        let docPourCopie = null;
+        if (id) { docPourCopie = this.modifier(parseInt(id), docData); Toast.success('Commande modifiée avec succès'); }
+        else { docPourCopie = this.ajouter(docData); Toast.success(`Commande ${docPourCopie.reference} créée avec succès`); }
+
+        // Copie PDF automatique dans le dossier local (dossier configuré ou création sur le Bureau)
+        // Mise à jour à la création ET à chaque modification
+        if (docPourCopie) {
+            this.enregistrerCopiePDF(docPourCopie);
+        }
 
         LineHistory.reset();
         Modal.fermer();
@@ -211,6 +218,19 @@ const Commandes = {
     },
 
     filtrer() { this.afficher(); },
+
+    /**
+     * Génère et enregistre automatiquement une copie PDF du bon de commande
+     * dans le dossier local (configuré ou créé sur le Bureau).
+     * Marque la commande avec l'indicateur copieLocale en cas de succès.
+     */
+    async enregistrerCopiePDF(doc) {
+        const ok = await PdfExport.enregistrerCopieDocument(doc, 'BON DE COMMANDE', 'Commande');
+        if (ok && doc && doc.id) {
+            this.modifier(doc.id, { copieLocale: true });
+        }
+        return ok;
+    },
 
     async exportPDF(id) {
         const doc = this.getById(id);

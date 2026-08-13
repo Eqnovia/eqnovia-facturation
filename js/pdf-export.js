@@ -139,7 +139,7 @@ const PdfExport = {
             y += 4.5;
         }
 
-        y += (compact ? 5 : 7);
+        y += (docType === 'FACTURE' ? 9 : (compact ? 5 : 7)); // Plus d'espace entre l'entête et l'Objet pour les factures
 
         // ===== OBJET =====
         if (data.objet) {
@@ -246,8 +246,8 @@ const PdfExport = {
             },
             columnStyles: {
                 0: { cellWidth: 'auto', halign: 'center' },
-                1: { cellWidth: 13, halign: 'center' },
-                2: { cellWidth: 28, halign: 'center' },
+                1: { cellWidth: 17, halign: 'center' },
+                2: { cellWidth: 26, halign: 'center' },
                 3: { cellWidth: 13, halign: 'center' },
                 4: { cellWidth: 14, halign: 'center' },
                 5: { cellWidth: 30, halign: 'center' },
@@ -257,7 +257,7 @@ const PdfExport = {
 
         let tableEndY = doc.lastAutoTable.finalY;
 
-        // ===== BLOC BAS : totaux + banque + suivi des paiements + cachet =====
+        // ===== BLOC BAS : banque (gauche) + totaux (droite) au même niveau + suivi des paiements =====
         const paiements = data.paiements || [];
         const hasPayments = docType === 'FACTURE' && paiements.length > 0;
 
@@ -289,10 +289,12 @@ const PdfExport = {
         const payBlockH = hasPayments
             ? (compact ? 14 + paiements.length * 5 : 18 + paiements.length * 5)
             : 0;
-        const stampBlockH = (compact ? 34 : 40) + 8; // cachet + marge
+        const stampBlockH = (docType === 'FACTURE') ? 0 : (compact ? 34 : 40) + 8; // cachet + marge (sans cachet pour les factures)
 
         // Position du bloc : poussé vers le bas de la page pour rester sur une seule page
-        const bottomAnchor = pageHeight - (totalsBlockH + bankBlockH + payBlockH + stampBlockH) - 22;
+        // Pour les factures, banque et totaux sont au même niveau : on prend le bloc le plus haut
+        const bottomBlockH = (docType === 'FACTURE') ? Math.max(totalsBlockH, bankBlockH) : (totalsBlockH + bankBlockH);
+        const bottomAnchor = pageHeight - (bottomBlockH + payBlockH + stampBlockH) - 22;
         let blockTop = Math.max(tableEndY + 10, bottomAnchor);
 
         // Si le tableau est trop long pour que le bloc bas tienne sur la page,
@@ -303,7 +305,28 @@ const PdfExport = {
         }
         y = blockTop;
 
-        // ===== TOTALS (right-aligned) =====
+        // ===== BANK DETAILS (left side) + TOTALS (right side) au même niveau =====
+        // Coordonnées bancaires à gauche
+        if (docType === 'FACTURE') {
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(compact ? 8 : 8.5);
+            doc.setTextColor(0, 0, 0);
+            doc.text('Coordonnées bancaires :', col1X, y);
+
+            doc.setFont('helvetica', 'normal');
+            doc.setFontSize(compact ? 8 : 8.5);
+            doc.setTextColor(60, 60, 60);
+            const bankDetails = data.bankDetails || {
+                banque: 'Crédit du Maroc',
+                beneficiaire: company.nom,
+                rib: '021 780 0000 177030150208 49'
+            };
+            doc.text(`Banque : ${bankDetails.banque}`, col1X, y + (compact ? 4 : 5));
+            doc.text(`Bénéficiaire : ${bankDetails.beneficiaire}`, col1X, y + (compact ? 8 : 9.5));
+            doc.text(`RIB : ${bankDetails.rib}`, col1X, y + (compact ? 12 : 14));
+        }
+
+        // Totaux à droite, alignés sur la même ligne de base que les coordonnées bancaires
         doc.setDrawColor(150, 150, 150);
         doc.setLineWidth(0.3);
         doc.line(totalsX, y - 3, pageWidth - margin, y - 3);
@@ -322,31 +345,7 @@ const PdfExport = {
             doc.text(item.value, totalsX + 70, rowY, { align: 'right' });
         });
 
-        y += totalsBlockH;
-
-        // ===== BANK DETAILS (left side, for invoices) =====
-        if (docType === 'FACTURE') {
-            doc.setFont('helvetica', 'bold');
-            doc.setFontSize(compact ? 8 : 8.5);
-            doc.setTextColor(0, 0, 0);
-            doc.text('Coordonnées bancaires :', col1X, y);
-            y += compact ? 4 : 5;
-
-            doc.setFont('helvetica', 'normal');
-            doc.setFontSize(compact ? 8 : 8.5);
-            doc.setTextColor(60, 60, 60);
-            const bankDetails = data.bankDetails || {
-                banque: 'Crédit du Maroc',
-                beneficiaire: company.nom,
-                rib: '021 780 0000 177030150208 49'
-            };
-            doc.text(`Banque : ${bankDetails.banque}`, col1X, y);
-            y += compact ? 4 : 4.5;
-            doc.text(`Bénéficiaire : ${bankDetails.beneficiaire}`, col1X, y);
-            y += compact ? 4 : 4.5;
-            doc.text(`RIB : ${bankDetails.rib}`, col1X, y);
-            y += compact ? 6 : 8;
-        }
+        y += (docType === 'FACTURE') ? Math.max(totalsBlockH, bankBlockH) : totalsBlockH;
 
         // ===== SUIVI DES PAIEMENTS (factures avec paiements) =====
         if (hasPayments) {
@@ -392,7 +391,7 @@ const PdfExport = {
 
         // ===== CACHET / STAMP PNG (centered, positioned dynamically) =====
         // Applied to all document types
-        if (docType === 'FACTURE' || docType === 'DEVIS' || docType === 'BON DE COMMANDE' || docType === 'BON DE LIVRAISON' || docType === 'FACTURE PRO FORMA') {
+        if (docType === 'DEVIS' || docType === 'BON DE COMMANDE' || docType === 'BON DE LIVRAISON' || docType === 'FACTURE PRO FORMA') {
             const stampWidth = compact ? 52 : 60;
             const stampHeight = compact ? 34 : 40;
             const stampX = (pageWidth - stampWidth) / 2;
@@ -551,6 +550,62 @@ const PdfExport = {
     },
 
     /**
+     * Génère le PDF et enregistre automatiquement une copie dans le dossier local
+     * (sans ouvrir la popup d'aperçu). Utilisé à la création des documents.
+     * Le sélecteur de dossier (si besoin) est appelé AVANT la génération PDF :
+     * Chrome exige une action utilisateur pour ouvrir le sélecteur.
+     */
+    async sauvegarderCopieAuto(docType, data, filename) {
+        try {
+            const name = filename || `${docType}_${data.reference}.pdf`;
+            if (typeof FileStorage === 'undefined') return false;
+
+            // S'assurer qu'un dossier est configuré (ou le créer sur le Bureau) pendant l'action utilisateur
+            const pret = await FileStorage.assurerDossier();
+            if (!pret) {
+                Toast.info('Copie PDF non enregistrée dans un dossier local (vous pouvez la télécharger manuellement).');
+                return false;
+            }
+
+            const blob = await this.generatePDF(docType, data);
+            const saved = await FileStorage.saveFile(blob, docType, name);
+            if (saved) {
+                console.log(`Copie PDF enregistrée : ${name}`);
+                Toast.success('✅ Copie PDF enregistrée dans le dossier local');
+                return true;
+            }
+            Toast.info('Copie PDF non enregistrée dans un dossier local (vous pouvez la télécharger manuellement).');
+            return false;
+        } catch (e) {
+            console.warn('Sauvegarde automatique du PDF impossible:', e);
+            return false;
+        }
+    },
+
+    /**
+     * Génère et enregistre automatiquement une copie PDF d'un document
+     * (facture, devis, bon de commande...) dans le dossier local configuré
+     * ou créé sur le Bureau. Méthode unique partagée par les modules.
+     */
+    async enregistrerCopieDocument(doc, docType, prefix) {
+        if (!doc) return;
+        try {
+            const data = this.prepareDocumentData(doc, {
+                nom: doc.clientNom,
+                adresse: doc.clientAdresse,
+                ville: doc.clientVille,
+                ice: doc.clientIce,
+                rc: doc.clientRC
+            }, doc.lignes, doc.reference, { totalHT: doc.totalHT, totalTVA: doc.totalTVA, totalTTC: doc.totalTTC }, docType);
+            data.attachments = doc.attachments || [];
+            return this.sauvegarderCopieAuto(docType, data, `${prefix}_${doc.reference}.pdf`);
+        } catch (e) {
+            console.warn('Copie PDF automatique impossible:', e);
+            return false;
+        }
+    },
+
+    /**
      * Open PDF in new tab for preview
      */
     async previewPDF(docType, data) {
@@ -616,14 +671,16 @@ const PdfExport = {
     },
 
     /**
-     * Format number with French locale
+     * Format number with French locale + espace entre les milliers
+     * (les espaces insécables sont remplacés par des espaces normales pour la police PDF)
      */
     formatNumber(amount) {
-        return new Intl.NumberFormat('fr-FR', {
+        const formatted = new Intl.NumberFormat('fr-FR', {
             minimumFractionDigits: 2,
             maximumFractionDigits: 2,
-            useGrouping: false
+            useGrouping: true
         }).format(amount);
+        return formatted.replace(/[\u00A0\u202F]/g, ' ');
     },
 
     /**

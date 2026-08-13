@@ -45,6 +45,15 @@ const FileStorage = {
     },
 
     /**
+     * Reconfigurer le dossier de sauvegarde depuis la barre d'outils :
+     * réinitialise l'éventuel refus de session puis ouvre le sélecteur de dossier.
+     */
+    async reconfigurerDossier() {
+        this._demandeRefusee = false;
+        return this.setupFolder();
+    },
+
+    /**
      * Open directory picker and let the user select or create the "Facturation Eqnovia" folder
      */
     async setupFolder() {
@@ -74,12 +83,57 @@ const FileStorage = {
             await this._saveHandle(this._rootHandle);
             this._initialized = true;
             this._updateStatusDot();
-            Toast.success('✅ Dossier configuré ! Les fichiers seront sauvegardés automatiquement.');
+            Toast.success('✅ Dossier configuré ! Les copies seront sauvegardées automatiquement.');
             return true;
         } catch (e) {
             if (e.name !== 'AbortError' && e.name !== 'SecurityError') {
                 console.error('Erreur configuration dossier:', e);
                 Toast.error('Erreur lors de la configuration du dossier');
+            }
+            return false;
+        }
+    },
+
+    /**
+     * S'assure qu'un dossier de sauvegarde est configuré :
+     * - si déjà configuré → true immédiat ;
+     * - sinon ouvre le sélecteur de dossier (démarrant sur le Bureau) pour
+     *   créer/choisir un dossier. IMPORTANT : doit être appelé pendant une
+     *   action utilisateur (avant toute génération PDF asynchrone).
+     * @returns {Promise<boolean>} true si un dossier est prêt
+     */
+    async assurerDossier() {
+        if (this.isReady()) return true;
+        // Si l'utilisateur a déjà refusé/annulé pendant cette session, on ne redemande pas
+        if (this._demandeRefusee) return false;
+        if (!window.showDirectoryPicker) return false;
+
+        try {
+            this._rootHandle = await window.showDirectoryPicker({
+                id: 'eqnovia-facturation',
+                mode: 'readwrite',
+                startIn: 'desktop'
+            });
+
+            const permission = await this._rootHandle.queryPermission({ mode: 'readwrite' });
+            if (permission !== 'granted') {
+                const result = await this._rootHandle.requestPermission({ mode: 'readwrite' });
+                if (result !== 'granted') {
+                    this._demandeRefusee = true;
+                    return false;
+                }
+            }
+
+            await this._saveHandle(this._rootHandle);
+            this._initialized = true;
+            this._updateStatusDot();
+            Toast.success('✅ Dossier configuré ! Les copies seront sauvegardées automatiquement.');
+            return true;
+        } catch (e) {
+            // Annulation ou erreur : on ne redemande plus pendant cette session
+            this._demandeRefusee = true;
+            if (e.name !== 'AbortError' && e.name !== 'SecurityError') {
+                console.error('Erreur configuration dossier:', e);
             }
             return false;
         }
@@ -143,13 +197,24 @@ const FileStorage = {
     },
 
     /**
-     * Update the status indicator dot in the header
+     * Update the status indicator dot AND the toolbar button label in the header
      */
     _updateStatusDot() {
         const dot = document.getElementById('folder-status-dot');
         if (dot) {
             dot.className = 'folder-dot ' + (this._initialized ? 'folder-dot-active' : 'folder-dot-inactive');
             dot.title = this._initialized ? '✅ Dossier configuré - Les PDF sont sauvegardés automatiquement' : '❌ Dossier non configuré';
+        }
+        // Le bouton de la barre d'outils change de libellé selon l'état
+        const btn = document.getElementById('folder-config-btn');
+        if (btn) {
+            btn.title = this._initialized
+                ? 'Changer le dossier de sauvegarde (reconfigurer)'
+                : 'Configurer le dossier de sauvegarde sur le Bureau';
+            const label = btn.querySelector('.folder-config-label');
+            if (label) {
+                label.textContent = this._initialized ? 'Reconfigurer dossier' : 'Dossier local';
+            }
         }
     },
 

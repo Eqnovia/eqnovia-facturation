@@ -34,7 +34,7 @@ const Devis = {
         filtered.forEach(d => {
             const factureExistante = factures.find(f => String(f.sourceId) === String(d.id));
             html += `<tr>
-                <td><strong>${Utils.escapeHtml(d.reference || '')}</strong></td>
+                <td><strong>${Utils.escapeHtml(d.reference || '')}</strong>${d.copieLocale ? ' <span class="copie-locale-badge" title="Copie PDF enregistrée dans le dossier local">📁</span>' : ''}</td>
                 <td>${Utils.escapeHtml(d.clientNom || '')}</td>
                 <td>${Utils.formatDate(d.date)}</td>
                 <td>${Utils.formatMoney(d.totalTTC || 0)}</td>
@@ -206,8 +206,15 @@ const Devis = {
         };
 
         const id = data.get('id');
-        if (id) { this.modifier(parseInt(id), docData); Toast.success('Devis modifié avec succès'); }
-        else { const saved = this.ajouter(docData); Toast.success(`Devis ${saved.reference} créé avec succès`); }
+        let docPourCopie = null;
+        if (id) { docPourCopie = this.modifier(parseInt(id), docData); Toast.success('Devis modifié avec succès'); }
+        else { docPourCopie = this.ajouter(docData); Toast.success(`Devis ${docPourCopie.reference} créé avec succès`); }
+
+        // Copie PDF automatique dans le dossier local (dossier configuré ou création sur le Bureau)
+        // Mise à jour à la création ET à chaque modification
+        if (docPourCopie) {
+            this.enregistrerCopiePDF(docPourCopie);
+        }
 
         LineHistory.reset();
         Modal.fermer();
@@ -216,6 +223,19 @@ const Devis = {
     },
 
     filtrer() { this.afficher(); },
+
+    /**
+     * Génère et enregistre automatiquement une copie PDF du devis
+     * dans le dossier local (configuré ou créé sur le Bureau).
+     * Marque le devis avec l'indicateur copieLocale en cas de succès.
+     */
+    async enregistrerCopiePDF(doc) {
+        const ok = await PdfExport.enregistrerCopieDocument(doc, 'DEVIS', 'Devis');
+        if (ok && doc && doc.id) {
+            this.modifier(doc.id, { copieLocale: true });
+        }
+        return ok;
+    },
 
     getStatutClass(statut) {
         switch (statut) {
@@ -283,6 +303,8 @@ const Devis = {
 
         const saved = Factures.ajouter(factureData);
         Toast.success(`Devis converti en Facture ${saved.reference}`);
+        // Copie PDF automatique de la facture créée
+        Factures.enregistrerCopiePDF(saved);
         this.afficher();
     }
 };

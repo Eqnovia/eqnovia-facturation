@@ -836,6 +836,19 @@ body {
     vertical-align: middle;
 }
 
+/* Badge : copie PDF enregistrée dans le dossier local */
+.copie-locale-badge {
+    display: inline-block;
+    font-size: 0.8rem;
+    vertical-align: middle;
+    cursor: default;
+    transition: transform 0.2s ease;
+}
+
+.copie-locale-badge:hover {
+    transform: scale(1.2);
+}
+
 .locked-badge {
     display: inline-block;
     font-size: 0.75rem;

@@ -89,7 +89,7 @@ const Factures = {
                 ? `<button class="btn btn-sm btn-warning" onclick="Factures.editer(${f.id})" title="Modifier la facture (mot de passe requis)">✏️</button>`
                 : `<button class="btn btn-sm btn-warning" onclick="Factures.editer(${f.id})" title="Déverrouiller et modifier (mot de passe requis)">🔓</button>`;
             html += `<tr>
-                <td><strong>${Utils.escapeHtml(f.reference || '')}</strong>${attCount ? ` <span class="att-count" title="${attCount} pièce(s) jointe(s)">📎 ${attCount}</span>` : ''}</td>
+                <td><strong>${Utils.escapeHtml(f.reference || '')}</strong>${f.copieLocale ? ' <span class="copie-locale-badge" title="Copie PDF enregistrée dans le dossier local">📁</span>' : ''}${attCount ? ` <span class="att-count" title="${attCount} pièce(s) jointe(s)">📎 ${attCount}</span>` : ''}</td>
                 <td>${Utils.escapeHtml(f.clientNom || '')}</td>
                 <td>${Utils.formatDate(f.date)}</td>
                 <td>${Utils.formatMoney(f.totalTTC || 0)}${reste > 0 ? ` <span class="reste-text">(reste ${Utils.formatMoney(reste)})</span>` : ''}</td>
@@ -754,12 +754,19 @@ const Factures = {
         };
         docData.statut = this.recalculerStatut({ ...(existing || {}), ...docData });
 
+        let docPourCopie = null;
         if (id) {
-            this.modifier(parseInt(id), docData);
+            docPourCopie = this.modifier(parseInt(id), docData);
             Toast.success('Facture modifiée avec succès');
         } else {
-            const saved = this.ajouter(docData);
-            Toast.success(`Facture ${saved.reference} créée avec succès`);
+            docPourCopie = this.ajouter(docData);
+            Toast.success(`Facture ${docPourCopie.reference} créée avec succès`);
+        }
+
+        // Copie PDF automatique dans le dossier local (dossier configuré ou création sur le Bureau)
+        // Mise à jour à la création ET à chaque modification
+        if (docPourCopie) {
+            this.enregistrerCopiePDF(docPourCopie);
         }
 
         LineHistory.reset();
@@ -770,6 +777,19 @@ const Factures = {
 
     filtrer() {
         this.afficher();
+    },
+
+    /**
+     * Génère et enregistre automatiquement une copie PDF de la facture
+     * dans le dossier local (configuré ou créé sur le Bureau).
+     * Marque la facture avec l'indicateur copieLocale en cas de succès.
+     */
+    async enregistrerCopiePDF(doc) {
+        const ok = await PdfExport.enregistrerCopieDocument(doc, 'FACTURE', 'Facture');
+        if (ok && doc && doc.id) {
+            this.modifier(doc.id, { copieLocale: true });
+        }
+        return ok;
     },
 
     async exportPDF(id) {
