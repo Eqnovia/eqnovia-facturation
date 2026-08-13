@@ -151,7 +151,7 @@ eqnovia-facturation/
 ## 🔗 Liens utiles
 
 - 📌 [Repository GitHub](https://github.com/Eqnovia/eqnovia-facturation)
-- 🌐 Site Web: [À configurer]
+- 🌐 Site Web: https://eqnovia.github.io/eqnovia-facturation/
 
 ---
 
