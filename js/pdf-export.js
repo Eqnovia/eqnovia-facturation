@@ -47,6 +47,11 @@ const PdfExport = {
         });
         doc.setDisplayMode('fullheight', 'continuous');
 
+        // ===== DEVIS: completely custom layout matching model.pdf =====
+        if (docType === 'DEVIS') {
+            return this.generateDevisPDF(doc, data, company, pageWidth, pageHeight, margin, contentWidth);
+        }
+
         // ===== TOP: Logo (left) + Title (right) =====
         try {
             const logoBase64 = this.getLogoBase64();
@@ -119,24 +124,68 @@ const PdfExport = {
         // ===== DATE & REFERENCE (below the two columns) =====
         y = Math.max(companyEndY, clientLineY) + (compact ? 4 : 6);
 
-        const dateLabels = {
-            'FACTURE': 'Date de facturation :',
-            'FACTURE PRO FORMA': 'Date de facturation :',
-            'BON DE COMMANDE': 'Date de commande :',
-            'DEVIS': 'Date du devis :',
-            'BON DE LIVRAISON': 'Date de livraison :'
-        };
-        const dateLabel = dateLabels[docType] || 'Date :';
-        doc.setFont('helvetica', 'normal');
-        doc.setFontSize(8.5);
-        doc.setTextColor(60, 60, 60);
-        doc.text(`${dateLabel}  ${data.date}`, col1X, y);
-        doc.text(`Référence :  ${data.reference}`, pageWidth - margin, y, { align: 'right' });
+        // DEVIS: Date bar with 3 columns, label on top, value below
+        if (docType === 'DEVIS') {
+            // Gray background bar (taller for two-line format)
+            const barH = compact ? 12 : 14;
+            doc.setFillColor(245, 247, 250);
+            doc.setDrawColor(200, 200, 200);
+            doc.setLineWidth(0.3);
+            doc.roundedRect(col1X - 2, y - 4, contentWidth + 4, barH, 1, 1, 'FD');
 
-        // Date de livraison (optionnelle) : uniquement pour les bons de commande
-        if (docType === 'BON DE COMMANDE' && data.dateLivraison) {
-            doc.text(`Date de livraison :  ${data.dateLivraison}`, col1X, y + 4.5);
-            y += 4.5;
+            // Column positions
+            const col2X = col1X + (contentWidth / 3);
+            const col3X = col1X + 2 * (contentWidth / 3);
+
+            // Column 1: Date du devis
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(7.5);
+            doc.setTextColor(100, 100, 100);
+            doc.text('Date du devis :', col1X, y);
+            doc.setFont('helvetica', 'normal');
+            doc.setFontSize(8.5);
+            doc.setTextColor(30, 30, 30);
+            doc.text(data.date || '', col1X, y + 5);
+
+            // Column 2: Date de fin de validité
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(7.5);
+            doc.setTextColor(100, 100, 100);
+            doc.text('Date de fin de validité :', col2X, y);
+            doc.setFont('helvetica', 'normal');
+            doc.setFontSize(8.5);
+            doc.setTextColor(30, 30, 30);
+            doc.text(data.dateValidite || '—', col2X, y + 5);
+
+            // Column 3: Référence
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(7.5);
+            doc.setTextColor(100, 100, 100);
+            doc.text('Référence :', col3X, y);
+            doc.setFont('helvetica', 'normal');
+            doc.setFontSize(8.5);
+            doc.setTextColor(30, 30, 30);
+            doc.text(data.reference || '', col3X, y + 5);
+
+            y += (compact ? 10 : 12);
+        } else {
+            const dateLabels = {
+                'FACTURE': 'Date de facturation :',
+                'FACTURE PRO FORMA': 'Date de facturation :',
+                'BON DE COMMANDE': 'Date de commande :',
+                'BON DE LIVRAISON': 'Date de livraison :'
+            };
+            const dateLabel = dateLabels[docType] || 'Date :';
+            doc.setFont('helvetica', 'normal');
+            doc.setFontSize(8.5);
+            doc.setTextColor(60, 60, 60);
+            doc.text(`${dateLabel}  ${data.date}`, col1X, y);
+            doc.text(`Référence :  ${data.reference}`, pageWidth - margin, y, { align: 'right' });
+
+            if (docType === 'BON DE COMMANDE' && data.dateLivraison) {
+                doc.text(`Date de livraison :  ${data.dateLivraison}`, col1X, y + 4.5);
+                y += 4.5;
+            }
         }
 
         y += (docType === 'FACTURE' ? 9 : (compact ? 5 : 7)); // Plus d'espace entre l'entête et l'Objet pour les factures
@@ -163,7 +212,15 @@ const PdfExport = {
         y += (compact ? 4 : 6);
 
         // ===== LINES TABLE (centered via autoTable margins) =====
-        const tableHeader = [
+        const isDevis = docType === 'DEVIS';
+        const tableHeader = isDevis ? [
+            { content: 'Désignation', options: { halign: 'center' } },
+            { content: '% TVA', options: { halign: 'center' } },
+            { content: 'Quantité', options: { halign: 'center' } },
+            { content: 'Unité', options: { halign: 'center' } },
+            { content: 'Prix unitaire HT', options: { halign: 'center' } },
+            { content: 'Prix total HT', options: { halign: 'center' } }
+        ] : [
             { content: 'Désignation', options: { halign: 'center' } },
             { content: '% TVA', options: { halign: 'center' } },
             { content: 'Montant TVA', options: { halign: 'center' } },
@@ -179,6 +236,16 @@ const PdfExport = {
             const tva = line.tva || 0;
             const totalHT = qty * pu;
             const montantTVA = totalHT * tva / 100;
+            if (isDevis) {
+                return [
+                    line.designation || '',
+                    tva + '%',
+                    qty,
+                    line.unite || '',
+                    this.formatNumber(pu),
+                    this.formatNumber(totalHT)
+                ];
+            }
             return [
                 line.designation || '',
                 tva + '%',
@@ -244,7 +311,14 @@ const PdfExport = {
             alternateRowStyles: {
                 fillColor: [242, 244, 248]
             },
-            columnStyles: {
+            columnStyles: isDevis ? {
+                0: { cellWidth: 'auto', halign: 'center' },
+                1: { cellWidth: 18, halign: 'center' },
+                2: { cellWidth: 18, halign: 'center' },
+                3: { cellWidth: 16, halign: 'center' },
+                4: { cellWidth: 32, halign: 'center' },
+                5: { cellWidth: 32, halign: 'center' }
+            } : {
                 0: { cellWidth: 'auto', halign: 'center' },
                 1: { cellWidth: 17, halign: 'center' },
                 2: { cellWidth: 26, halign: 'center' },
@@ -289,7 +363,7 @@ const PdfExport = {
         const payBlockH = hasPayments
             ? (compact ? 14 + paiements.length * 5 : 18 + paiements.length * 5)
             : 0;
-        const stampBlockH = (docType === 'FACTURE') ? 0 : (compact ? 34 : 40) + 8; // cachet + marge (sans cachet pour les factures)
+        const stampBlockH = (docType === 'FACTURE' || docType === 'DEVIS') ? 0 : (compact ? 34 : 40) + 8; // pas de cachet pour factures et devis
 
         // Position du bloc : poussé vers le bas de la page pour rester sur une seule page
         // Pour les factures, banque et totaux sont au même niveau : on prend le bloc le plus haut
@@ -389,9 +463,77 @@ const PdfExport = {
             y += compact ? 2 : 3;
         }
 
+        // ===== REMARQUES (optionnel) =====
+        if (data.remarques) {
+            y += compact ? 3 : 5;
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(compact ? 7.5 : 8);
+            doc.setTextColor(0, 0, 0);
+            doc.text('Remarques :', col1X, y);
+            y += compact ? 3.5 : 4;
+            doc.setFont('helvetica', 'normal');
+            doc.setFontSize(compact ? 7.5 : 8);
+            doc.setTextColor(60, 60, 60);
+            const remarquesLines = doc.splitTextToSize(data.remarques, contentWidth);
+            remarquesLines.forEach((line, idx) => {
+                doc.text(line, col1X, y + idx * 3.5);
+            });
+            y += remarquesLines.length * 3.5 + (compact ? 2 : 3);
+        }
+
+        // ===== DEVIS FOOTER : note + banque (box) + signature (box) =====
+        if (docType === 'DEVIS') {
+            y += compact ? 3 : 5;
+
+            // Note : Hors fourniture...
+            doc.setFont('helvetica', 'italic');
+            doc.setFontSize(7.5);
+            doc.setTextColor(100, 100, 100);
+            const noteText = '*Hors fourniture et installation des modules photovoltaïques et de leurs structures de fixation (éléments déjà installés par le client)';
+            const noteLines = doc.splitTextToSize(noteText, contentWidth);
+            noteLines.forEach((line, idx) => {
+                doc.text(line, col1X, y + idx * 3.5);
+            });
+            y += noteLines.length * 3.5 + (compact ? 4 : 6);
+
+            // Two boxes side by side
+            const boxW = (contentWidth - 8) / 2; // each box width
+            const boxH = compact ? 22 : 26;
+            const box1X = col1X;
+            const box2X = col1X + boxW + 8;
+
+            // Box 1: Coordonnées bancaires
+            doc.setDrawColor(200, 200, 200);
+            doc.setLineWidth(0.3);
+            doc.roundedRect(box1X, y, boxW, boxH, 2, 2, 'S');
+
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(compact ? 7.5 : 8);
+            doc.setTextColor(0, 0, 0);
+            doc.text('Coordonnées bancaires :', box1X + 4, y + 5);
+
+            doc.setFont('helvetica', 'normal');
+            doc.setFontSize(compact ? 7.5 : 8);
+            doc.setTextColor(60, 60, 60);
+            doc.text('Banque : Crédit du Maroc', box1X + 4, y + 10);
+            doc.text('Bénéficiaire : Eqnovia', box1X + 4, y + 15);
+            doc.text('RIB : 021 780 0000 177030150208 49', box1X + 4, y + 20);
+
+            // Box 2: Cachet, Date, Signature
+            doc.roundedRect(box2X, y, boxW, boxH, 2, 2, 'S');
+
+            doc.setFont('helvetica', 'italic');
+            doc.setFontSize(compact ? 7.5 : 8);
+            doc.setTextColor(100, 100, 100);
+            doc.text('Cachet, Date, Signature et mention', box2X + boxW / 2, y + 10, { align: 'center' });
+            doc.text('"Bon pour accord"', box2X + boxW / 2, y + 15, { align: 'center' });
+
+            y += boxH + 4;
+        }
+
         // ===== CACHET / STAMP PNG (centered, positioned dynamically) =====
-        // Applied to all document types
-        if (docType === 'DEVIS' || docType === 'BON DE COMMANDE' || docType === 'BON DE LIVRAISON' || docType === 'FACTURE PRO FORMA') {
+        // Applied to BON DE COMMANDE, BON DE LIVRAISON, PRO FORMA (NOT DEVIS)
+        if (docType === 'BON DE COMMANDE' || docType === 'BON DE LIVRAISON' || docType === 'FACTURE PRO FORMA') {
             const stampWidth = compact ? 52 : 60;
             const stampHeight = compact ? 34 : 40;
             const stampX = (pageWidth - stampWidth) / 2;
@@ -483,6 +625,231 @@ const PdfExport = {
             doc.setFontSize(7.5);
             doc.setTextColor(130, 130, 130);
             doc.text(`Page ${p} / ${totalPages}`, pageWidth - margin, footY - 4, { align: 'right' });
+        }
+
+        return doc.output('blob');
+    },
+
+    /**
+     * DEVIS-specific PDF generation matching the Python FPDF model.
+     * Blue header, centered title, bordered table, note, bank details, signature.
+     */
+    generateDevisPDF(doc, data, company, pageWidth, pageHeight, margin, contentWidth) {
+        const col1X = margin;
+        let y = 0;
+
+        // ===== BLUE HEADER BAR (0–45mm) =====
+        doc.setFillColor(31, 58, 95); // Bleu marine
+        doc.rect(0, 0, pageWidth, 45, 'F');
+
+        // Company name + address in white
+        y = 8;
+        doc.setFillColor(31, 58, 95);
+        doc.setTextColor(255, 255, 255);
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(18);
+        doc.text(company.nom || 'Eqnovia', col1X, y);
+
+        doc.setFont('helvetica', '', 9);
+        doc.setFontSize(9);
+        y += 7;
+        doc.text(company.adresse || '20 rue Moussa Bnou Noussair', col1X, y);
+        y += 5;
+        doc.text(company.ville || 'Casablanca', col1X, y);
+        y += 5;
+        doc.text(company.website || 'www.eqnovia.ma', col1X, y);
+
+        // White separator line at bottom of header
+        doc.setDrawColor(255, 255, 255);
+        doc.setLineWidth(0.3);
+        doc.line(10, 43, pageWidth - 10, 43);
+        doc.setDrawColor(0, 0, 0);
+
+        // ===== TITLE: DEVIS (centered, below header) =====
+        y = 55;
+        doc.setTextColor(31, 58, 95);
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(20);
+        doc.text('DEVIS', pageWidth / 2, y, { align: 'center' });
+        doc.setTextColor(0, 0, 0);
+
+        // ===== CLIENT INFO (left) + DATES/REF (right) =====
+        y = 65;
+
+        // Client name (bold, left)
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(12);
+        doc.text(data.clientNom || '', col1X, y);
+n        // Dates and reference (right-aligned)
+        doc.setFont('helvetica', '', 10);
+        const rightX = pageWidth - margin;
+        doc.text(`Date du devis : ${data.date || ''}`, rightX, y, { align: 'right' });
+        y += 6;
+        doc.text(`Date de fin de validité : ${data.dateValidite || ''}`, rightX, y, { align: 'right' });
+        y += 6;
+        doc.setFont('helvetica', 'bold');
+        doc.text(`Référence : ${data.reference || ''}`, rightX, y, { align: 'right' });
+        doc.setFont('helvetica', '', 10);
+
+        // Client address (left, below name)
+        y = 65;
+        if (data.clientAdresse) {
+            doc.setFont('helvetica', '', 9);
+            doc.text(data.clientAdresse, col1X, y + 12);
+        }
+        if (data.clientVille) {
+            doc.setFont('helvetica', '', 9);
+            doc.text(data.clientVille, col1X, y + 17);
+        }
+
+        // ===== OBJET =====
+        y = 88;
+        doc.setFont('helvetica', 'B', 10);
+        doc.text(`Objet : ${data.objet || ''}`, col1X, y);
+        doc.setFont('helvetica', '', 10);
+        y += 10;
+
+        // ===== TABLE =====
+        // Column widths: Désignation=65, %TVA=20, Qté=18, Unité=18, PU HT=30, Total HT=35
+        const cols = [
+            { header: 'Désignation', width: 65, align: 'L' },
+            { header: '% TVA', width: 20, align: 'C' },
+            { header: 'Qté', width: 18, align: 'C' },
+            { header: 'Unité', width: 18, align: 'C' },
+            { header: 'Prix unitaire HT', width: 30, align: 'R' },
+            { header: 'Prix total HT', width: 35, align: 'R' }
+        ];
+        const totalTableW = cols.reduce((s, c) => s + c.width, 0);
+        const tableX = (pageWidth - totalTableW) / 2; // Center table
+        const rowH = 7;
+        const headerH = 8;
+
+        // Table header row (gray bg, bordered)
+        doc.setFillColor(240, 240, 240);
+        doc.setDrawColor(0, 0, 0);
+        doc.setLineWidth(0.3);
+        doc.setFont('helvetica', 'B', 10);
+        let tx = tableX;
+        cols.forEach(col => {
+            doc.rect(tx, y, col.width, headerH, 'FD');
+            doc.text(col.header, tx + col.width / 2, y + headerH / 2 + 1, { align: 'center' });
+            tx += col.width;
+        });
+        y += headerH;
+
+        // Table data rows
+        doc.setFont('helvetica', '', 9);
+        doc.setFillColor(255, 255, 255);
+        let totalHT = 0;
+        let totalTVA = 0;
+        const lignes = data.lines || [];
+
+        lignes.forEach(line => {
+            const qty = line.quantite || 0;
+            const pu = line.prixUnitaire || 0;
+            const tvaRate = line.tva || 0;
+            const lineTotalHT = qty * pu;
+            const montantTVA = lineTotalHT * tvaRate / 100;
+            totalHT += lineTotalHT;
+            totalTVA += montantTVA;
+
+            // Check page break
+            if (y + rowH > pageHeight - 25) {
+                doc.addPage();
+                y = margin + 10;
+            }
+
+            tx = tableX;
+            const rowData = [
+                { text: line.designation || '', align: 'L' },
+                { text: `${tvaRate}%`, align: 'C' },
+                { text: `${qty}`, align: 'C' },
+                { text: line.unite || '', align: 'C' },
+                { text: this.formatNumber(pu), align: 'R' },
+                { text: this.formatNumber(lineTotalHT), align: 'R' }
+            ];
+            rowData.forEach((cell, i) => {
+                doc.rect(tx, y, cols[i].width, rowH, 'D');
+                doc.text(cell.text, tx + 2, y + rowH / 2 + 1);
+                tx += cols[i].width;
+            });
+            y += rowH;
+        });
+
+        // ===== TOTALS (right-aligned, bordered) =====
+        const totalTTC = totalHT + totalTVA;
+        const totalsW = cols[4].width + cols[5].width; // 30 + 35 = 65
+        const totalsX = tableX + totalTableW - totalsW;
+        const totalRowH = 8;
+        const totalBigH = 10;
+
+        // Total HT
+        doc.setDrawColor(0, 0, 0);
+        doc.setLineWidth(0.3);
+        doc.setFont('helvetica', 'B', 10);
+        doc.rect(totalsX, y, cols[4].width, totalRowH, 'D');
+        doc.text('Total HT', totalsX + cols[4].width - 2, y + totalRowH / 2 + 1, { align: 'right' });
+        doc.rect(totalsX + cols[4].width, y, cols[5].width, totalRowH, 'D');
+        doc.text(this.formatNumber(totalHT), totalsX + totalTableW - 2, y + totalRowH / 2 + 1, { align: 'right' });
+        y += totalRowH;
+
+        // Total TVA
+        doc.rect(totalsX, y, cols[4].width, totalRowH, 'D');
+        doc.text('Total TVA', totalsX + cols[4].width - 2, y + totalRowH / 2 + 1, { align: 'right' });
+        doc.rect(totalsX + cols[4].width, y, cols[5].width, totalRowH, 'D');
+        doc.text(this.formatNumber(totalTVA), totalsX + totalTableW - 2, y + totalRowH / 2 + 1, { align: 'right' });
+        y += totalRowH;
+
+        // Total TTC (bold, bigger)
+        doc.setFont('helvetica', 'B', 12);
+        doc.rect(totalsX, y, cols[4].width, totalBigH, 'D');
+        doc.text('Total TTC', totalsX + cols[4].width - 2, y + totalBigH / 2 + 1.5, { align: 'right' });
+        doc.rect(totalsX + cols[4].width, y, cols[5].width, totalBigH, 'D');
+        doc.text(this.formatNumber(totalTTC), totalsX + totalTableW - 2, y + totalBigH / 2 + 1.5, { align: 'right' });
+        y += totalBigH + 4;
+
+        // ===== NOTE =====
+        doc.setFont('helvetica', 'I', 9);
+        doc.setTextColor(80, 80, 80);
+        const noteText = '*Hors fourniture et installation des modules photovoltaïques et de leurs structures de fixation (éléments déjà installés par le client)';
+        const noteLines = doc.splitTextToSize(noteText, contentWidth);
+        noteLines.forEach((line, idx) => {
+            doc.text(line, col1X, y + idx * 4);
+        });
+        y += noteLines.length * 4 + 6;
+
+        // ===== COORDONNÉES BANCAIRES =====
+        doc.setTextColor(0, 0, 0);
+        doc.setFont('helvetica', 'B', 10);
+        doc.text('Coordonnées bancaires :', col1X, y);
+        y += 5;
+        doc.setFont('helvetica', '', 9);
+        doc.text('Banque : Crédit du Maroc', col1X, y);
+        y += 5;
+        doc.text('Bénéficiaire : Eqnovia', col1X, y);
+        y += 5;
+        doc.text('RIB : 021 780 0000 177030150208 49', col1X, y);
+        y += 10;
+
+        // ===== SIGNATURE (bottom right) =====
+        const sigY = pageHeight - 35; // Position above footer
+        doc.setFont('helvetica', 'B', 10);
+        doc.text(data.ville || company.ville || '', col1X, sigY);
+        doc.text('Cachet, Date, Signature et mention "Bon pour Accord"', pageWidth - margin, sigY, { align: 'right' });
+
+        // ===== LEGAL FOOTER (on all pages) =====
+        const totalPages = doc.internal.getNumberOfPages();
+        for (let p = 1; p <= totalPages; p++) {
+            doc.setPage(p);
+            const footY = pageHeight - 16;
+            doc.setDrawColor(200, 200, 200);
+            doc.setLineWidth(0.3);
+            doc.line(margin, footY - 3, pageWidth - margin, footY - 3);
+            doc.setFontSize(7);
+            doc.setTextColor(130, 130, 130);
+            doc.setFont('helvetica', 'I', 7);
+            doc.text(`${company.nom || 'Eqnovia'} S.A. - ${company.adresse || '20 rue Moussa Bnou Noussair'} ${company.ville || 'Casablanca'} - Capital : ${company.capital || '2 000 000'} Dhs - ICE : ${company.ice || '001445583000022'} - RC : ${company.rc || '236357'} - IF : ${company.if || '40397283'} - N° Taxe Professionnelle : ${company.tp || '35546302'}`, pageWidth / 2, footY, { align: 'center' });
+            doc.text(`Page ${p} / ${totalPages}`, pageWidth / 2, footY + 4, { align: 'center' });
         }
 
         return doc.output('blob');
@@ -725,7 +1092,9 @@ const PdfExport = {
                 banque: 'Crédit du Maroc',
                 beneficiaire: 'Eqnovia',
                 rib: '021 780 0000 177030150208 49'
-            }
+            },
+            dateValidite: doc.dateValidite ? Utils.formatDate(doc.dateValidite) : '',
+            remarques: doc.remarques || '',
         };
     }
 };

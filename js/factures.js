@@ -231,6 +231,7 @@ const Factures = {
                 </table>
                 ${paiementsHtml}
                 ${attachmentsHtml}
+                ${doc.remarques ? `<div class="remarks-section"><h4>📝 Remarques</h4><p>${Utils.escapeHtml(doc.remarques)}</p></div>` : ''}
                 <div class="form-actions">
                     ${actionsHtml}
                     <button class="btn btn-outline" onclick="Modal.fermer()">Fermer</button>
@@ -601,7 +602,7 @@ const Factures = {
                     <option value="20" ${(l.tva || 0) == 20 ? 'selected' : ''}>20%</option>
                 </select></td>
                 <td><input type="number" name="quantite" class="line-qty" value="${l.quantite || 1}" min="0.01" step="0.01"></td>
-                <td><input type="text" name="unite" class="line-unite" list="unites-list" value="${Utils.escapeHtml(l.unite || '')}" placeholder="Choisir ou saisir une unité"></td>
+                <td>${Utils.uniteSelectHtml(l.unite)}</td>
                 <td><input type="number" name="prixUnitaire" class="line-price" value="${l.prixUnitaire || 0}" min="0" step="0.01"></td>
                 <td class="line-total">${Utils.formatMoney((l.quantite || 0) * (l.prixUnitaire || 0))}</td>
                 <td><button type="button" class="remove-line-btn" onclick="Factures.supprimerLigne(this)">×</button></td>
@@ -645,6 +646,7 @@ const Factures = {
                         <tbody id="lines-container">${linesHtml}</tbody>
                     </table>
                     <div class="lines-toolbar">
+                        ${ExcelImport.getImportButtonHtml('facture')}
                         <span class="lines-toolbar-spacer"></span>
                         <button type="button" class="add-line-btn" onclick="Factures.ajouterLigne()">+ Ajouter une ligne</button>
                     </div>
@@ -655,6 +657,10 @@ const Factures = {
                         <tr><td class="label">Total TVA</td><td class="value" id="total-tva">0,00 Dhs</td></tr>
                         <tr><td class="label">Total TTC</td><td class="value total-ttc" id="total-ttc">0,00 Dhs</td></tr>
                     </table>
+                </div>
+                <div class="form-group">
+                    <label>Remarques (optionnel)</label>
+                    <textarea name="remarques" rows="3" placeholder="Remarques ou notes...">${Utils.escapeHtml(d.remarques || '')}</textarea>
                 </div>
                 <div class="form-actions">
                     <button type="submit" class="btn btn-primary">💾 Enregistrer</button>
@@ -674,7 +680,7 @@ const Factures = {
                 <option value="0">0%</option><option value="7">7%</option><option value="10">10%</option><option value="14">14%</option><option value="20" selected>20%</option>
             </select></td>
             <td><input type="number" name="quantite" class="line-qty" value="1" min="0.01" step="0.01"></td>
-            <td><input type="text" name="unite" class="line-unite" list="unites-list" value="" placeholder="Choisir ou saisir une unité"></td>
+            <td>${Utils.uniteSelectHtml('')}</td>
             <td><input type="number" name="prixUnitaire" class="line-price" value="0" min="0" step="0.01"></td>
             <td class="line-total">0,00 Dhs</td>
             <td><button type="button" class="remove-line-btn" onclick="Factures.supprimerLigne(this)">×</button></td>
@@ -747,6 +753,7 @@ const Factures = {
             clientRC: client.rc || '',
             date: data.get('date') || new Date().toISOString().split('T')[0],
             objet: data.get('objet') || '',
+            remarques: data.get('remarques') || '',
             lignes: lignes,
             totalHT: totals.totalHT,
             totalTVA: totals.totalTVA,
@@ -804,6 +811,7 @@ const Factures = {
             rc: doc.clientRC
         }, doc.lignes, doc.reference, { totalHT: doc.totalHT, totalTVA: doc.totalTVA, totalTTC: doc.totalTTC }, 'FACTURE');
         data.attachments = doc.attachments || [];
+        data.remarques = doc.remarques || '';
 
         await PdfExport.downloadPDF('FACTURE', data, `Facture_${doc.reference}.pdf`);
     },

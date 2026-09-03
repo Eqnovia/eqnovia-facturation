@@ -180,3 +180,13 @@ Ce projet est sous license [À définir].
 ⭐ Si vous trouvez ce projet utile, n'hésitez pas à le mettre en favori !
 
 </div>
+
+
+
+┌──────────────┬────────────────────────┐
+│ Role         │ Password               │
+├──────────────┼────────────────────────┤
+│ 🔑 Admin     │ eqnovia-admin-2026     │
+│ 📊 Comptable │ eqnovia-comptable-2026 │
+│ 👁️ Visiteur  │ eqnovia-visitor        │
+└──────────────┴────────────────────────

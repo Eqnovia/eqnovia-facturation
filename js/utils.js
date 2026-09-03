@@ -440,6 +440,34 @@ const Utils = {
             reader.readAsDataURL(file);
         });
     },
+    // Ordered unit list for all document lines
+    UNITES: ['Unité', 'ml', 'Ens.', 'kg', 'Pièce', 'Jours-homme', 'Heures', 'Forfait', 'Jour'],
+
+    // Auto-incrementing ID counter for datalist elements
+    _uniteDatalistCounter: 0,
+
+    /**
+     * Generate an <input> with a <datalist> for units.
+     * Users can type freely or pick from the dropdown suggestions.
+     * @param {string} currentValue - the unit to pre-fill
+     * @param {string} nameAttr - the name attribute for the input
+     * @returns {string} HTML string
+     */
+    uniteSelectHtml(currentValue, nameAttr = 'unite') {
+        const id = `unite-list-${++this._uniteDatalistCounter}`;
+        const val = Utils.escapeHtml(currentValue || '');
+        const options = this.UNITES.map(u => `<option value="${u}">`).join('');
+        return `<input type="text" list="${id}" name="${nameAttr}" class="line-unite" value="${val}" placeholder="— Choisir —" autocomplete="off" title="Sélectionnez une unité ou saisissez-en une nouvelle">` +
+            `<datalist id="${id}">${options}</datalist>`;
+    },
+
+    /**
+     * Generate an <input> with datalist for units (standalone, for product forms etc.)
+     */
+    uniteInputHtml(currentValue, nameAttr = 'unite') {
+        return this.uniteSelectHtml(currentValue, nameAttr);
+    },
+
     // Format a data-URL length (in chars) as a readable file size (~0.75 bytes per char)
     formatBytes(dataUrlLength) {
         const bytes = Math.round((dataUrlLength || 0) * 0.75);

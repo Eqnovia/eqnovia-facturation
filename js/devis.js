@@ -28,7 +28,7 @@ const Devis = {
             return;
         }
 
-        let html = `<table class="data-table"><thead><tr><th>Réf.</th><th>Client</th><th>Date</th><th>Total TTC</th><th>Statut</th><th>Actions</th></tr></thead><tbody>`;
+        let html = `<table class="data-table"><thead><tr><th>Réf.</th><th>Client</th><th>Date</th><th>Validité</th><th>Total TTC</th><th>Statut</th><th>Actions</th></tr></thead><tbody>`;
         // Une facture par devis : liste des factures créées à partir de devis
         const factures = Factures.getAll().filter(f => f.sourceType === 'devis');
         filtered.forEach(d => {
@@ -37,6 +37,7 @@ const Devis = {
                 <td><strong>${Utils.escapeHtml(d.reference || '')}</strong>${d.copieLocale ? ' <span class="copie-locale-badge" title="Copie PDF enregistrée dans le dossier local">📁</span>' : ''}</td>
                 <td>${Utils.escapeHtml(d.clientNom || '')}</td>
                 <td>${Utils.formatDate(d.date)}</td>
+                <td>${d.dateValidite ? Utils.formatDate(d.dateValidite) : '<span style="opacity:.4">—</span>'}${d.dateValidite && new Date(d.dateValidite) < new Date() && d.statut !== 'Confirmé' && d.statut !== 'Refusé' ? ' <span style="color:var(--danger-color);font-size:0.7rem;font-weight:600">⏰ expiré</span>' : ''}</td>
                 <td>${Utils.formatMoney(d.totalTTC || 0)}</td>
                 <td><span class="status-badge ${this.getStatutClass(d.statut)}">${d.statut || 'En attente'}</span></td>
                 <td class="actions">
@@ -70,18 +71,115 @@ const Devis = {
     voir(id) {
         const d = this.getById(id);
         if (!d) return Toast.error('Devis introuvable');
-        // Une facture par devis : vérifier si une facture a déjà été créée
         const factureExistante = Factures.getAll().find(f => f.sourceType === 'devis' && String(f.sourceId) === String(id));
+        const company = typeof PdfExport !== 'undefined' ? PdfExport.getCompany() : { nom:'Eqnovia', adresse:'20 rue Moussa Bnou Noussair', ville:'Casablanca', website:'www.eqnovia.ma', ice:'001445583000022', rc:'236357', if:'40397283', capital:'2 000 000 Dhs', tp:'35546302' };
+
         let linesHtml = '';
         (d.lignes || []).forEach(l => {
-            linesHtml += `<tr><td>${Utils.escapeHtml(l.designation || '')}</td><td>${l.tva || 0}%</td><td>${l.quantite || 0}</td><td>${Utils.escapeHtml(l.unite || '')}</td><td style="text-align:right">${Utils.formatMoney(l.prixUnitaire || 0)}</td><td style="text-align:right">${Utils.formatMoney((l.quantite || 0) * (l.prixUnitaire || 0))}</td></tr>`;
+            const total = (l.quantite || 0) * (l.prixUnitaire || 0);
+            linesHtml += `<tr>
+                <td>${Utils.escapeHtml(l.designation || '')}</td>
+                <td style="text-align:center">${l.tva || 0}%</td>
+                <td style="text-align:center">${l.quantite || 0}</td>
+                <td style="text-align:center">${Utils.escapeHtml(l.unite || '')}</td>
+                <td style="text-align:right">${Utils.formatMoney(l.prixUnitaire || 0)}</td>
+                <td style="text-align:right">${Utils.formatMoney(total)}</td>
+            </tr>`;
         });
 
         Modal.ouvrir(`Devis ${d.reference}`, `
-            <div class="document-preview">
-                <div class="preview-header"><div class="preview-company"><h2>Eqnovia</h2><p>${Utils.escapeHtml(d.clientNom || '')}</p></div><div class="preview-title"><h1>DEVIS</h1><p>N°: ${d.reference}</p><p>Date: ${Utils.formatDate(d.date)}</p><span class="status-badge ${this.getStatutClass(d.statut)}">${d.statut || 'En attente'}</span></div></div>
-                <div class="preview-info"><div class="preview-client"><h3>Client</h3><p>${Utils.escapeHtml(d.clientNom || '')}</p><p>${Utils.escapeHtml(d.clientAdresse || '')}</p></div><div class="preview-details"><h3>Détails</h3><p>Total HT: ${Utils.formatMoney(d.totalHT || 0)}</p><p>TVA: ${Utils.formatMoney(d.totalTVA || 0)}</p><p><strong>Total TTC: ${Utils.formatMoney(d.totalTTC || 0)}</strong></p></div></div>
-                <table class="lines-table"><thead><tr><th>Désignation</th><th>TVA</th><th>Qté</th><th>Unité</th><th>Prix unitaire</th><th>Total</th></tr></thead><tbody>${linesHtml}</tbody></table>
+            <div class="document-preview devis-layout">
+                <!-- HEADER: Logo left, DEVIS title + Client right -->
+                <div class="devis-header">
+                    <div class="devis-header-left">
+                        <div class="devis-logo"><h2>eqnovia</h2></div>
+                        <p>${company.nom}</p>
+                        <p>${company.adresse}</p>
+                        <p>${company.ville}</p>
+                        <p>${company.website}</p>
+                    </div>
+                    <div class="devis-header-right">
+                        <h1 class="devis-title">DEVIS</h1>
+                        <div class="devis-client-info">
+                            <p><strong>${Utils.escapeHtml(d.clientNom || '')}</strong></p>
+                            <p>${Utils.escapeHtml(d.clientAdresse || '')}</p>
+                            ${d.clientIce ? `<p>ICE: ${Utils.escapeHtml(d.clientIce)}</p>` : ''}
+                        </div>
+                        <span class="status-badge ${this.getStatutClass(d.statut)}">${d.statut || 'En attente'}</span>
+                    </div>
+                </div>
+
+                <!-- DATE BAR -->
+                <div class="devis-date-bar">
+                    <div class="devis-date-item">
+                        <span class="devis-date-label">Date du devis :</span>
+                        <span class="devis-date-value">${Utils.formatDate(d.date)}</span>
+                    </div>
+                    <div class="devis-date-item">
+                        <span class="devis-date-label">Date de fin de validité :</span>
+                        <span class="devis-date-value">${d.dateValidite ? Utils.formatDate(d.dateValidite) : '—'}</span>
+                    </div>
+                    <div class="devis-date-item">
+                        <span class="devis-date-label">Référence :</span>
+                        <span class="devis-date-value"><strong>${Utils.escapeHtml(d.reference || '')}</strong></span>
+                    </div>
+                </div>
+
+                <!-- OBJET -->
+                ${d.objet ? `<div class="devis-objet"><span class="devis-date-label">Objet :</span> ${Utils.escapeHtml(d.objet)}</div>` : ''}
+
+                <!-- MONTANTS -->
+                <p style="text-align:right;font-style:italic;color:var(--text-light);font-size:0.8rem;margin-bottom:0.5rem;">Montants exprimés en Dhs</p>
+
+                <!-- TABLE -->
+                <table class="lines-table devis-table">
+                    <thead>
+                        <tr>
+                            <th class="col-designation">Désignation</th>
+                            <th class="col-tva">% TVA</th>
+                            <th class="col-qty">Quantité</th>
+                            <th class="col-unit">Unité</th>
+                            <th class="col-price">Prix unitaire HT</th>
+                            <th class="col-total">Prix total HT</th>
+                        </tr>
+                    </thead>
+                    <tbody>${linesHtml}</tbody>
+                </table>
+
+                <!-- TOTALS -->
+                <div class="devis-totals">
+                    <table class="totals-table">
+                        <tr><td class="label">Total HT</td><td class="value">${Utils.formatMoney(d.totalHT || 0)}</td></tr>
+                        <tr><td class="label">Total TVA</td><td class="value">${Utils.formatMoney(d.totalTVA || 0)}</td></tr>
+                        <tr><td class="label">Total TTC</td><td class="value total-ttc">${Utils.formatMoney(d.totalTTC || 0)}</td></tr>
+                    </table>
+                </div>
+
+                <!-- NOTE -->
+                <p class="devis-note">*Hors fourniture et installation des modules photovoltaïques et de leurs structures de fixation (éléments déjà installés par le client)</p>
+
+                <!-- REMARQUES -->
+                ${d.remarques ? `<div class="remarks-section"><h4>📝 Remarques</h4><p>${Utils.escapeHtml(d.remarques)}</p></div>` : ''}
+
+                <!-- FOOTER: Two boxes -->
+                <div class="devis-footer-boxes">
+                    <div class="devis-footer-box">
+                        <h4>Coordonnées bancaires :</h4>
+                        <p>Banque : Crédit du Maroc</p>
+                        <p>Bénéficiaire : Eqnovia</p>
+                        <p>RIB : 021 780 0000 177030150208 49</p>
+                    </div>
+                    <div class="devis-footer-box devis-footer-signature">
+                        <p>Cachet, Date, Signature et mention "Bon pour Accord"</p>
+                    </div>
+                </div>
+
+                <!-- LEGAL FOOTER -->
+                <div class="devis-legal">
+                    ${company.nom} S.A. - ${company.adresse} ${company.ville} - Capital : ${company.capital} - ICE : ${company.ice} - RC : ${company.rc} - IF : ${company.if} - N° Taxe Professionnelle : ${company.tp}
+                </div>
+
+                <!-- ACTIONS -->
                 <div class="form-actions">
                     <button class="btn btn-pdf" onclick="Devis.exportPDF(${d.id})">📄 PDF</button>
                     <button class="btn btn-excel" onclick="Devis.exportExcel(${d.id})">📊 Excel</button>
@@ -89,7 +187,7 @@ const Devis = {
                     ${factureExistante
                         ? `<button class="btn btn-success" onclick="Factures.voir(${factureExistante.id})">📋 Facture ${factureExistante.reference}</button>`
                         : d.statut === 'Refusé'
-                            ? `<button class="btn btn-danger" title="Devis refusé : conversion impossible" disabled>📋 Convertir en Facture</button>`
+                            ? `<button class="btn btn-danger" title="Devis refusé" disabled>📋 Convertir en Facture</button>`
                             : `<button class="btn btn-primary" onclick="Devis.convertirFacture(${d.id})">📋 Convertir en Facture</button>`}
                     <button class="btn btn-success" onclick="Devis.changerStatut(${d.id}, 'Confirmé')" ${d.statut === 'Confirmé' ? 'disabled' : ''}>✅ Confirmer</button>
                     <button class="btn btn-danger" onclick="Devis.changerStatut(${d.id}, 'Refusé')" ${d.statut === 'Refusé' ? 'disabled' : ''}>❌ Refuser</button>
@@ -108,7 +206,7 @@ const Devis = {
             linesHtml += `<tr class="line-row"><td><input type="text" name="designation" class="line-designation" value="${Utils.escapeHtml(l.designation || '')}"></td>
                 <td><select name="tva" class="line-tva">${[0,7,10,14,20].map(v => `<option value="${v}" ${(l.tva||0)==v?'selected':''}>${v}%</option>`).join('')}</select></td>
                 <td><input type="number" name="quantite" class="line-qty" value="${l.quantite || 1}" min="0.01" step="0.01"></td>
-                <td><input type="text" name="unite" class="line-unite" list="unites-list" value="${Utils.escapeHtml(l.unite || '')}" placeholder="Choisir ou saisir une unité"></td>
+                <td>${Utils.uniteSelectHtml(l.unite)}</td>
                 <td><input type="number" name="prixUnitaire" class="line-price" value="${l.prixUnitaire || 0}" min="0" step="0.01"></td>
                 <td class="line-total">${Utils.formatMoney((l.quantite||0)*(l.prixUnitaire||0))}</td>
                 <td><button type="button" class="remove-line-btn" onclick="Devis.supprimerLigne(this)">×</button></td></tr>`;
@@ -120,7 +218,8 @@ const Devis = {
                 <div class="form-row">
                     <div class="form-group"><label>Client *</label>
                         <select name="clientId" required><option value="">Sélectionner un client</option>${clients.map(c => `<option value="${c.id}" ${d.clientId==c.id?'selected':''}>${Utils.escapeHtml(c.nom||c.raisonSociale||'')}</option>`).join('')}</select></div>
-                    <div class="form-group"><label>Date</label><input type="date" name="date" value="${Utils.formatDateInput(d.date||new Date())}"></div>
+                    <div class="form-group"><label>Date du devis</label><input type="date" name="date" value="${Utils.formatDateInput(d.date||new Date())}"></div>
+                    <div class="form-group"><label>Date de fin de validité</label><input type="date" name="dateValidite" value="${Utils.formatDateInput(d.dateValidite || (() => { const dt = new Date(d.date || new Date()); dt.setDate(dt.getDate() + 30); return dt; })())}"></div>
                     <div class="form-group"><label>Statut</label>
                         <select name="statut">
                             ${['En attente','Envoyé','Confirmé','Refusé'].map(s => `<option value="${s}" ${d.statut==s?'selected':''}>${s}</option>`).join('')}
@@ -132,11 +231,13 @@ const Devis = {
                     <table class="lines-table"><thead><tr><th class="col-designation">Désignation</th><th class="col-tva">TVA</th><th class="col-qty">Qté</th><th class="col-unit">Unité</th><th class="col-price">Prix unit.</th><th class="col-total">Total</th><th class="col-actions"></th></tr></thead>
                         <tbody id="lines-container">${linesHtml}</tbody></table>
                     <div class="lines-toolbar">
+                        ${ExcelImport.getImportButtonHtml('devis')}
                         <span class="lines-toolbar-spacer"></span>
                         <button type="button" class="add-line-btn" onclick="Devis.ajouterLigne()">+ Ajouter une ligne</button>
                     </div>
                 </div>
                 <div class="document-totals"><table class="totals-table"><tr><td class="label">Total HT</td><td class="value" id="total-ht">0,00 Dhs</td></tr><tr><td class="label">Total TVA</td><td class="value" id="total-tva">0,00 Dhs</td></tr><tr><td class="label">Total TTC</td><td class="value total-ttc" id="total-ttc">0,00 Dhs</td></tr></table></div>
+                <div class="form-group"><label>Remarques (optionnel)</label><textarea name="remarques" rows="3" placeholder="Remarques ou notes...">${Utils.escapeHtml(d.remarques || '')}</textarea></div>
                 <div class="form-actions"><button type="submit" class="btn btn-primary">💾 Enregistrer</button><button type="button" class="btn btn-outline" onclick="Modal.fermer()">Annuler</button></div>
             </form>`;
     },
@@ -147,7 +248,7 @@ const Devis = {
         row.innerHTML = `<td><input type="text" name="designation" class="line-designation" placeholder="Désignation"></td>
             <td><select name="tva" class="line-tva">${[0,7,10,14,20].map(v => `<option value="${v}" ${v==20?'selected':''}>${v}%</option>`).join('')}</select></td>
             <td><input type="number" name="quantite" class="line-qty" value="1" min="0.01" step="0.01"></td>
-            <td><input type="text" name="unite" class="line-unite" list="unites-list" value="" placeholder="Choisir ou saisir une unité"></td>
+            <td>${Utils.uniteSelectHtml('')}</td>
             <td><input type="number" name="prixUnitaire" class="line-price" value="0" min="0" step="0.01"></td>
             <td class="line-total">0,00 Dhs</td>
             <td><button type="button" class="remove-line-btn" onclick="Devis.supprimerLigne(this)">×</button></td>`;
@@ -201,7 +302,9 @@ const Devis = {
         const docData = {
             clientId, clientNom: client.nom || client.raisonSociale || '', clientAdresse: client.adresse || '', clientVille: client.ville || '', clientIce: client.ice || '', clientRC: client.rc || '',
             date: data.get('date') || new Date().toISOString().split('T')[0],
+            dateValidite: data.get('dateValidite') || '',
             objet: data.get('objet') || '',
+            remarques: data.get('remarques') || '',
             lignes, totalHT: totals.totalHT, totalTVA: totals.totalTVA, totalTTC: totals.totalTTC, statut: data.get('statut') || 'En attente'
         };
 
@@ -259,6 +362,8 @@ const Devis = {
         const doc = this.getById(id);
         if (!doc) return Toast.error('Devis introuvable');
         const data = PdfExport.prepareDocumentData(doc, { nom: doc.clientNom, adresse: doc.clientAdresse, ville: doc.clientVille, ice: doc.clientIce, rc: doc.clientRC }, doc.lignes, doc.reference, { totalHT: doc.totalHT, totalTVA: doc.totalTVA, totalTTC: doc.totalTTC }, 'DEVIS');
+        data.remarques = doc.remarques || '';
+        data.dateValidite = doc.dateValidite ? Utils.formatDate(doc.dateValidite) : '';
         await PdfExport.downloadPDF('DEVIS', data, `Devis_${doc.reference}.pdf`);
     },
 

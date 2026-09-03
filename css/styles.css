@@ -674,6 +674,8 @@ body {
     padding: 0.4rem;
     border: 1px solid var(--border-color);
     border-radius: 4px;
+    font-family: 'Montserrat', sans-serif;
+    font-size: 0.9rem;
 }
 
 .lines-table .col-designation { width: 35%; }
@@ -1091,6 +1093,325 @@ body {
     margin-top: 0;
 }
 
+/* LOGIN SCREEN */
+
+.login-screen {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    background: linear-gradient(135deg, var(--primary-color), var(--primary-dark));
+    padding: 2rem;
+}
+
+.login-card {
+    background: var(--card-bg);
+    border-radius: 12px;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+    width: 100%;
+    max-width: 400px;
+    overflow: hidden;
+    animation: modalSlideIn 0.4s ease;
+}
+
+.login-logo {
+    text-align: center;
+    padding: 2rem 2rem 1rem;
+    background: linear-gradient(135deg, var(--primary-color), var(--primary-dark));
+    color: white;
+}
+
+.login-logo h1 {
+    font-size: 2rem;
+    font-weight: 700;
+    margin-bottom: 0.3rem;
+}
+
+.login-logo span {
+    font-size: 0.9rem;
+    opacity: 0.85;
+}
+
+.login-form {
+    padding: 2rem;
+}
+
+.login-form h2 {
+    text-align: center;
+    margin-bottom: 1.5rem;
+    color: var(--text-color);
+    font-size: 1.3rem;
+}
+
+.login-input {
+    width: 100%;
+    padding: 0.8rem 1rem;
+    border: 2px solid var(--border-color);
+    border-radius: var(--radius);
+    font-family: inherit;
+    font-size: 1rem;
+    transition: border-color 0.3s;
+}
+
+.login-input:focus {
+    outline: none;
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 3px rgba(60, 65, 205, 0.15);
+}
+
+.login-password-wrapper {
+    position: relative;
+    display: flex;
+    align-items: center;
+}
+
+.login-password-wrapper .login-input {
+    padding-right: 3rem;
+}
+
+.login-eye-btn {
+    position: absolute;
+    right: 0.75rem;
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 1.1rem;
+    padding: 0.3rem;
+    opacity: 0.6;
+    transition: opacity 0.2s;
+}
+
+.login-eye-btn:hover {
+    opacity: 1;
+}
+
+.login-select {
+    width: 100%;
+    padding: 0.8rem 1rem;
+    border: 2px solid var(--border-color);
+    border-radius: var(--radius);
+    font-family: inherit;
+    font-size: 1rem;
+    background: white;
+    cursor: pointer;
+}
+
+.login-select:focus {
+    outline: none;
+    border-color: var(--primary-color);
+}
+
+.login-btn {
+    width: 100%;
+    padding: 0.9rem;
+    font-size: 1.05rem;
+    font-weight: 600;
+    margin-top: 0.5rem;
+}
+
+.login-error {
+    background: #ffebee;
+    color: #c62828;
+    padding: 0.6rem 1rem;
+    border-radius: var(--radius);
+    font-size: 0.85rem;
+    margin-bottom: 0.5rem;
+    text-align: center;
+}
+
+/* DEVIS LAYOUT */
+
+.devis-layout {
+    font-family: 'Montserrat', sans-serif;
+    padding: 1.5rem;
+}
+
+.devis-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 1.5rem;
+    padding-bottom: 1rem;
+    border-bottom: 2px solid var(--primary-color);
+}
+
+.devis-header-left {
+    font-size: 0.85rem;
+    color: var(--text-light);
+    line-height: 1.5;
+}
+
+.devis-logo h2 {
+    font-size: 1.8rem;
+    font-weight: 700;
+    color: var(--primary-color);
+    margin-bottom: 0.5rem;
+    letter-spacing: -0.5px;
+}
+
+.devis-header-right {
+    text-align: right;
+}
+
+.devis-title {
+    font-size: 2rem;
+    font-weight: 700;
+    color: var(--primary-color);
+    margin-bottom: 0.5rem;
+}
+
+.devis-client-info {
+    margin-bottom: 0.5rem;
+    font-size: 0.9rem;
+}
+
+.devis-client-info p {
+    margin: 0.2rem 0;
+}
+
+/* DATE BAR */
+
+.devis-date-bar {
+    display: flex;
+    gap: 1.5rem;
+    margin-bottom: 1rem;
+    padding: 0.8rem 1.2rem;
+    background: #f5f7fa;
+    border-radius: var(--radius);
+    border: 1px solid #e0e3e8;
+}
+
+.devis-date-item {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+    font-size: 0.85rem;
+    flex: 1;
+}
+
+.devis-date-label {
+    font-weight: 600;
+    color: var(--text-light);
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+}
+
+.devis-date-value {
+    color: var(--text-color);
+    font-weight: 500;
+    font-size: 0.9rem;
+}
+
+/* OBJET */
+
+.devis-objet {
+    margin-bottom: 1rem;
+    padding: 0.6rem 1rem;
+    font-size: 0.85rem;
+    color: var(--text-light);
+    border-left: 3px solid var(--primary-color);
+    background: rgba(60, 65, 205, 0.03);
+}
+
+/* TABLE */
+
+.devis-table {
+    margin-bottom: 1rem;
+}
+
+.devis-table th {
+    font-size: 0.8rem;
+    text-transform: none;
+    font-weight: 600;
+}
+
+.devis-table td {
+    font-size: 0.85rem;
+}
+
+/* TOTALS */
+
+.devis-totals {
+    display: flex;
+    justify-content: flex-end;
+    margin-bottom: 1rem;
+}
+
+.devis-totals .totals-table {
+    width: 280px;
+}
+
+.devis-totals .total-ttc {
+    font-size: 1.1rem;
+    color: var(--primary-color);
+}
+
+/* NOTE */
+
+.devis-note {
+    font-size: 0.78rem;
+    font-style: italic;
+    color: var(--text-light);
+    margin-bottom: 1.5rem;
+    line-height: 1.5;
+    padding: 0.5rem 0;
+    border-top: 1px solid var(--border-color);
+}
+
+/* FOOTER BOXES */
+
+.devis-footer-boxes {
+    display: flex;
+    gap: 1rem;
+    margin-bottom: 1rem;
+}
+
+.devis-footer-box {
+    flex: 1;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius);
+    padding: 1rem;
+    min-height: 80px;
+}
+
+.devis-footer-box h4 {
+    font-size: 0.85rem;
+    margin-bottom: 0.5rem;
+    color: var(--text-color);
+}
+
+.devis-footer-box p {
+    font-size: 0.8rem;
+    color: var(--text-light);
+    line-height: 1.6;
+    margin: 0.15rem 0;
+}
+
+.devis-footer-signature {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+}
+
+.devis-footer-signature p {
+    font-size: 0.85rem;
+    color: var(--text-light);
+    font-style: italic;
+}
+
+/* LEGAL FOOTER */
+
+.devis-legal {
+    text-align: center;
+    font-size: 0.7rem;
+    color: #999;
+    padding-top: 1rem;
+    border-top: 1px solid var(--border-color);
+    line-height: 1.6;
+}
+
 /* RESPONSIVE */
 
 @media (max-width: 768px) {
@@ -1101,4 +1422,278 @@ body {
     .form-row { grid-template-columns: 1fr; }
     .modal-content { width: 95%; margin: 1rem; }
     .data-table { display: block; overflow-x: auto; }
+}
+
+/* REMARKS SECTION */
+
+.remarks-section {
+    margin-top: 1rem;
+    padding: 1rem;
+    background: #f8f9fa;
+    border-left: 4px solid var(--primary-color);
+    border-radius: 0 var(--radius) var(--radius) 0;
+}
+
+.remarks-section h4 {
+    margin-bottom: 0.5rem;
+    font-size: 0.9rem;
+    color: var(--text-color);
+}
+
+.remarks-section p {
+    font-size: 0.85rem;
+    color: var(--text-light);
+    line-height: 1.5;
+}
+
+/* FORM TEXTAREA */
+
+.form-group textarea {
+    width: 100%;
+    padding: 0.7rem 1rem;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius);
+    font-family: 'Montserrat', sans-serif;
+    font-size: 0.95rem;
+    resize: vertical;
+    min-height: 60px;
+}
+
+.form-group textarea:focus {
+    outline: none;
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 3px rgba(60, 65, 205, 0.1);
+}
+
+/* UNIT SELECT DROPDOWN */
+
+.line-unite {
+    font-family: 'Montserrat', sans-serif;
+    font-size: 0.9rem;
+    width: 100%;
+    padding: 0.3rem 0.4rem;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    background: white;
+}
+
+.line-unite:focus {
+    outline: none;
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 2px rgba(60, 65, 205, 0.15);
+}
+
+/* EXCEL IMPORT BUTTON */
+
+.btn-import-excel {
+    background: #1a73e8;
+    color: white;
+    border: none;
+    padding: 0.5rem 1rem;
+    border-radius: var(--radius);
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 0.85rem;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    transition: all 0.3s ease;
+}
+
+.btn-import-excel:hover {
+    background: #1557b0;
+}
+
+/* ADMIN/VISITOR ROLE BADGES */
+
+.role-badge {
+    display: inline-block;
+    padding: 0.2rem 0.6rem;
+    border-radius: 20px;
+    font-size: 0.7rem;
+    font-weight: 600;
+}
+
+.role-admin {
+    background: var(--primary-color);
+    color: white;
+}
+
+.role-visitor {
+    background: #ff9800;
+    color: white;
+}
+
+.role-comptable {
+    background: #26a69a;
+    color: white;
+}
+
+/* DOWNLOAD BUTTON */
+
+.btn-download {
+    background: #5c6bc0;
+    color: white;
+    border: none;
+    padding: 0.5rem 1rem;
+    border-radius: var(--radius);
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 0.85rem;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    transition: all 0.3s ease;
+}
+
+.btn-download:hover {
+    background: #3f51b5;
+}
+
+/* ROLE SWITCHER */
+
+.role-switcher {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-left: 1rem;
+}
+
+.role-switcher label {
+    color: white;
+    font-size: 0.8rem;
+    font-weight: 500;
+}
+
+.role-switcher select {
+    padding: 0.3rem 0.6rem;
+    border-radius: var(--radius);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    background: rgba(255, 255, 255, 0.15);
+    color: white;
+    font-family: inherit;
+    font-size: 0.8rem;
+    cursor: pointer;
+}
+
+.role-switcher select option {
+    background: var(--primary-color);
+    color: white;
+}
+
+/* VISITOR MODE - No document access, download only */
+
+.visitor-mode [data-doc-section],
+.visitor-mode [data-section="contacts"],
+.visitor-mode [data-section="produits"] {
+    display: none !important;
+}
+
+.visitor-mode #factures,
+.visitor-mode #devis,
+.visitor-mode #commandes,
+.visitor-mode #livraisons,
+.visitor-mode #proforma,
+.visitor-mode #contacts,
+.visitor-mode #produits {
+    display: none !important;
+}
+
+.visitor-mode .btn-primary,
+.visitor-mode .btn-warning,
+.visitor-mode .btn-danger,
+.visitor-mode .section-header .btn-primary,
+.visitor-mode .add-line-btn,
+.visitor-mode .remove-line-btn,
+.visitor-mode .paiements-actions,
+.visitor-mode .attachments-actions,
+.visitor-mode .btn-folder,
+.visitor-mode #folder-config-btn {
+    display: none !important;
+}
+
+.visitor-mode .line-unite,
+.visitor-mode .line-designation,
+.visitor-mode .line-qty,
+.visitor-mode .line-price,
+.visitor-mode .line-tva,
+.visitor-mode input,
+.visitor-mode select,
+.visitor-mode textarea {
+    pointer-events: none;
+    opacity: 0.7;
+}
+
+/* DOWNLOAD PDF SECTION */
+
+.download-pdf-section {
+    background: white;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius);
+    padding: 1.5rem;
+    margin-top: 1.5rem;
+}
+
+.download-pdf-section h3 {
+    margin-bottom: 0.3rem;
+}
+
+.download-options {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+}
+
+.download-check {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.9rem;
+    cursor: pointer;
+}
+
+.download-check input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+    cursor: pointer;
+}
+
+/* COMPTABLE MODE - Consult + Download PDF only */
+
+.comptable-mode #contacts,
+.comptable-mode #produits {
+    display: none !important;
+}
+
+.comptable-mode [data-section="contacts"],
+.comptable-mode [data-section="produits"] {
+    display: none !important;
+}
+
+/* Hide create/edit/delete/sync/view buttons */
+.comptable-mode .btn-primary,
+.comptable-mode .btn-warning,
+.comptable-mode .btn-danger,
+.comptable-mode .btn-outline,
+.comptable-mode .section-header .btn-primary,
+.comptable-mode .add-line-btn,
+.comptable-mode .remove-line-btn,
+.comptable-mode .paiements-actions,
+.comptable-mode .attachments-actions,
+.comptable-mode #folder-config-btn,
+.comptable-mode [onclick*="CloudSync.synchroniser"] {
+    display: none !important;
+}
+
+/* Hide form inputs in view/edit mode */
+.comptable-mode .line-unite,
+.comptable-mode .line-designation,
+.comptable-mode .line-qty,
+.comptable-mode .line-price,
+.comptable-mode .line-tva,
+.comptable-mode input,
+.comptable-mode select,
+.comptable-mode textarea {
+    pointer-events: none;
+    opacity: 0.7;
 }

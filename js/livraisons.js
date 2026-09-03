@@ -65,11 +65,14 @@ const Livraisons = {
             linesHtml += `<tr><td>${Utils.escapeHtml(l.designation || '')}</td><td>${l.quantite || 0}</td><td>${Utils.escapeHtml(l.unite || '')}</td><td style="text-align:right">${Utils.formatMoney((l.quantite || 0)*(l.prixUnitaire || 0))}</td></tr>`;
         });
 
+        const remarksHtml = d.remarques ? `<div class="remarks-section"><h4>📝 Remarques</h4><p>${Utils.escapeHtml(d.remarques)}</p></div>` : '';
+
         Modal.ouvrir(`BL ${d.reference}`, `
             <div class="document-preview">
                 <div class="preview-header"><div class="preview-company"><h2>Eqnovia</h2><p>${Utils.escapeHtml(d.clientNom || '')}</p></div><div class="preview-title"><h1>BON DE LIVRAISON</h1><p>N°: ${d.reference}</p><p>Date: ${Utils.formatDate(d.date)}</p></div></div>
                 <div class="preview-info"><div class="preview-client"><h3>Client</h3><p>${Utils.escapeHtml(d.clientNom || '')}</p><p>${Utils.escapeHtml(d.clientAdresse || '')}</p></div></div>
                 <table class="lines-table"><thead><tr><th>Désignation</th><th>Qté</th><th>Unité</th><th>Total</th></tr></thead><tbody>${linesHtml}</tbody></table>
+                ${remarksHtml}
                 <div class="form-actions">
                     <button class="btn btn-pdf" onclick="Livraisons.exportPDF(${d.id})">📄 PDF</button>
                     <button class="btn btn-excel" onclick="Livraisons.exportExcel(${d.id})">📊 Excel</button>
@@ -88,7 +91,7 @@ const Livraisons = {
         lignes.forEach((l, i) => {
             linesHtml += `<tr class="line-row"><td><input type="text" name="designation" class="line-designation" value="${Utils.escapeHtml(l.designation || '')}"></td>
                 <td><input type="number" name="quantite" class="line-qty" value="${l.quantite || 1}" min="0.01" step="0.01"></td>
-                <td><input type="text" name="unite" class="line-unite" list="unites-list" value="${Utils.escapeHtml(l.unite || '')}" placeholder="Choisir ou saisir une unité"></td>
+                <td>${Utils.uniteSelectHtml(l.unite)}</td>
                 <td class="line-total">${Utils.formatMoney((l.quantite||0)*(l.prixUnitaire||0))}</td>
                 <td><button type="button" class="remove-line-btn" onclick="Livraisons.supprimerLigne(this)">×</button></td></tr>`;
         });
@@ -106,10 +109,12 @@ const Livraisons = {
                     <table class="lines-table"><thead><tr><th class="col-designation">Désignation</th><th class="col-qty">Qté</th><th class="col-unit">Unité</th><th class="col-total">Total</th><th class="col-actions"></th></tr></thead>
                         <tbody id="lines-container">${linesHtml}</tbody></table>
                     <div class="lines-toolbar">
+                        ${ExcelImport.getImportButtonHtml('livraison')}
                         <span class="lines-toolbar-spacer"></span>
                         <button type="button" class="add-line-btn" onclick="Livraisons.ajouterLigne()">+ Ajouter un article</button>
                     </div>
                 </div>
+                <div class="form-group"><label>Remarques (optionnel)</label><textarea name="remarques" rows="3" placeholder="Remarques ou notes...">${Utils.escapeHtml(d.remarques || '')}</textarea></div>
                 <div class="form-actions"><button type="submit" class="btn btn-primary">💾 Enregistrer</button><button type="button" class="btn btn-outline" onclick="Modal.fermer()">Annuler</button></div>
             </form>`;
     },
@@ -119,7 +124,7 @@ const Livraisons = {
         const row = document.createElement('tr'); row.className = 'line-row';
         row.innerHTML = `<td><input type="text" name="designation" class="line-designation" placeholder="Désignation"></td>
             <td><input type="number" name="quantite" class="line-qty" value="1" min="0.01" step="0.01"></td>
-            <td><input type="text" name="unite" class="line-unite" list="unites-list" value="" placeholder="Choisir ou saisir une unité"></td>
+            <td>${Utils.uniteSelectHtml('')}</td>
             <td class="line-total">0,00 Dhs</td>
             <td><button type="button" class="remove-line-btn" onclick="Livraisons.supprimerLigne(this)">×</button></td>`;
         container.appendChild(row);
@@ -153,6 +158,7 @@ const Livraisons = {
             clientId, clientNom: client.nom || client.raisonSociale || '', clientAdresse: client.adresse || '', clientVille: client.ville || '', clientIce: client.ice || '', clientRC: client.rc || '',
             date: data.get('date') || new Date().toISOString().split('T')[0],
             objet: data.get('objet') || '',
+            remarques: data.get('remarques') || '',
             lignes, totalHT: totals.totalHT, totalTVA: totals.totalTVA, totalTTC: totals.totalTTC
         };
 
@@ -172,6 +178,7 @@ const Livraisons = {
         const doc = this.getById(id);
         if (!doc) return Toast.error('Bon de livraison introuvable');
         const data = PdfExport.prepareDocumentData(doc, { nom: doc.clientNom, adresse: doc.clientAdresse, ville: doc.clientVille, ice: doc.clientIce, rc: doc.clientRC }, doc.lignes, doc.reference, { totalHT: doc.totalHT, totalTVA: doc.totalTVA, totalTTC: doc.totalTTC }, 'BON DE LIVRAISON');
+        data.remarques = doc.remarques || '';
         await PdfExport.downloadPDF('BON DE LIVRAISON', data, `BL_${doc.reference}.pdf`);
     },
 

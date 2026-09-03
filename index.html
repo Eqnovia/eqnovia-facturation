@@ -9,10 +9,43 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <!-- SDK Supabase pour la synchronisation en ligne -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.4"></script>
 </head>
 <body>
+    <!-- LOGIN SCREEN -->
+    <div id="login-screen" class="login-screen">
+        <div class="login-card">
+            <div class="login-logo">
+                <h1>Eqnovia</h1>
+                <span>Gestion de Facturation</span>
+            </div>
+            <div class="login-form">
+                <h2>Connexion</h2>
+                <div class="form-group">
+                    <label>Profil</label>
+                    <select id="login-role" class="login-select">
+                        <option value="admin">🔑 Admin</option>
+                        <option value="comptable">📊 Comptable</option>
+                        <option value="visitor">👁️ Visiteur</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Mot de passe</label>
+                    <div class="login-password-wrapper">
+                        <input type="password" id="login-password" class="login-input" placeholder="Saisir le mot de passe" onkeydown="if(event.key==='Enter')Auth.login()">
+                        <button type="button" class="login-eye-btn" onclick="Auth.togglePassword()" title="Afficher / masquer le mot de passe">👁️</button>
+                    </div>
+                </div>
+                <div id="login-error" class="login-error" style="display:none"></div>
+                <button class="btn btn-primary login-btn" onclick="Auth.login()">Connexion</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MAIN APP (hidden until login) -->
+    <div id="app-container" style="display:none">
     <!-- Header -->
     <header class="header">
         <div class="header-top">
@@ -29,25 +62,32 @@
                     <span class="icon">📁</span> <span class="folder-config-label">Dossier local</span>
                 </button>
                 <span id="folder-status-dot" class="folder-dot folder-dot-inactive" title="Dossier non configuré"></span>
+                <button class="btn btn-folder" onclick="MonthlyDownload.showModal()" title="Télécharger la base de données en ZIP">
+                    <span class="icon">📥</span> Télécharger
+                </button>
+                <div class="role-switcher" id="header-role-badge"></div>
+                <button class="btn btn-folder" onclick="Auth.logout()" title="Déconnexion">
+                    <span class="icon">🚪</span> Déconnexion
+                </button>
             </div>
         </div>
         <nav class="main-nav">
             <button class="nav-btn active" data-section="dashboard">
                 <span class="icon">📊</span> Tableau de bord
             </button>
-            <button class="nav-btn" data-section="factures">
+            <button class="nav-btn" data-section="factures" data-doc-section>
                 <span class="icon">📄</span> Factures
             </button>
-            <button class="nav-btn" data-section="devis">
+            <button class="nav-btn" data-section="devis" data-doc-section>
                 <span class="icon">📋</span> Devis
             </button>
-            <button class="nav-btn" data-section="commandes">
+            <button class="nav-btn" data-section="commandes" data-doc-section>
                 <span class="icon">🛒</span> Commandes
             </button>
-            <button class="nav-btn" data-section="livraisons">
+            <button class="nav-btn" data-section="livraisons" data-doc-section>
                 <span class="icon">📦</span> Livraisons
             </button>
-            <button class="nav-btn" data-section="proforma">
+            <button class="nav-btn" data-section="proforma" data-doc-section>
                 <span class="icon">📑</span> Pro Forma
             </button>
             <button class="nav-btn" data-section="contacts">
@@ -89,6 +129,32 @@
             <div class="recent-activity">
                 <h3>Activité récente</h3>
                 <div id="recent-list" class="activity-list"></div>
+            </div>
+
+            <!-- DOWNLOAD PDF SECTION (visible only for Comptable/Visitor) -->
+            <div class="download-pdf-section" id="download-pdf-section" style="display:none;">
+                <h3>📥 Télécharger les documents en PDF</h3>
+                <p style="color:var(--text-light);font-size:0.85rem;margin-bottom:1rem;">Téléchargez tous vos documents dans un fichier ZIP compressé</p>
+                <div class="download-options">
+                    <label class="download-check">
+                        <input type="checkbox" id="dl-pdf-factures" checked> 📄 Factures
+                    </label>
+                    <label class="download-check">
+                        <input type="checkbox" id="dl-pdf-devis" checked> 📋 Devis
+                    </label>
+                    <label class="download-check">
+                        <input type="checkbox" id="dl-pdf-commandes" checked> 🛒 Commandes
+                    </label>
+                    <label class="download-check">
+                        <input type="checkbox" id="dl-pdf-livraisons" checked> 📦 Livraisons
+                    </label>
+                    <label class="download-check">
+                        <input type="checkbox" id="dl-pdf-proforma" checked> 📑 Pro Forma
+                    </label>
+                </div>
+                <button class="btn btn-download" onclick="MonthlyDownload.telechargerZIP()" style="margin-top:1rem;">
+                    📥 Télécharger tout en PDF (ZIP)
+                </button>
             </div>
         </section>
 
@@ -230,16 +296,15 @@
 
     <!-- Liste des unités (datalist) : l'utilisateur peut choisir une unité ou en saisir une libre -->
     <datalist id="unites-list">
-        <option value="Pièce">
-        <option value="Ens">
-        <option value="Kg">
-        <option value="ml">
-        <option value="cm">
-        <option value="H">
-        <option value="J">
-        <option value="M">
-        <option value="Forfait">
         <option value="Unité">
+        <option value="ml">
+        <option value="Ens.">
+        <option value="kg">
+        <option value="Pièce">
+        <option value="Jours-homme">
+        <option value="Heures">
+        <option value="Forfait">
+        <option value="Jour">
     </datalist>
 
     <!-- Modal for forms -->
@@ -255,6 +320,7 @@
 
     <!-- Toast notifications -->
     <div id="toast-container"></div>
+    </div><!-- /app-container -->
 
     <!-- Scripts (cache-busting : force le rechargement des nouvelles versions) -->
     <script src="js/database.js?v=20260806e"></script>

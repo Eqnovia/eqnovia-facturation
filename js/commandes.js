@@ -72,6 +72,7 @@ const Commandes = {
                 <div class="preview-header"><div class="preview-company"><h2>Eqnovia</h2><p>${Utils.escapeHtml(d.fournisseurNom || d.clientNom || '')}</p></div><div class="preview-title"><h1>BON DE COMMANDE</h1><p>N°: ${d.reference}</p><p>Date: ${Utils.formatDate(d.date)}</p>${d.dateLivraison ? `<p>Date de livraison: ${Utils.formatDate(d.dateLivraison)}</p>` : ''}</div></div>
                 <div class="preview-info"><div class="preview-client"><h3>Fournisseur</h3><p>${Utils.escapeHtml(d.fournisseurNom || d.clientNom || '')}</p><p>${Utils.escapeHtml(d.fournisseurAdresse || d.clientAdresse || '')}</p><p>ICE: ${Utils.escapeHtml(d.fournisseurIce || d.clientIce || '')}</p></div><div class="preview-details"><h3>Détails</h3><p>Total HT: ${Utils.formatMoney(d.totalHT || 0)}</p><p>TVA: ${Utils.formatMoney(d.totalTVA || 0)}</p><p><strong>Total TTC: ${Utils.formatMoney(d.totalTTC || 0)}</strong></p></div></div>
                 <table class="lines-table"><thead><tr><th>Désignation</th><th>TVA</th><th>Qté</th><th>Unité</th><th>Prix unitaire</th><th>Total</th></tr></thead><tbody>${linesHtml}</tbody></table>
+                ${d.remarques ? `<div class="remarks-section"><h4>📝 Remarques</h4><p>${Utils.escapeHtml(d.remarques)}</p></div>` : ''}
                 <div class="form-actions">
                     <button class="btn btn-pdf" onclick="Commandes.exportPDF(${d.id})">📄 PDF</button>
                     <button class="btn btn-excel" onclick="Commandes.exportExcel(${d.id})">📊 Excel</button>
@@ -91,7 +92,7 @@ const Commandes = {
             linesHtml += `<tr class="line-row"><td><input type="text" name="designation" class="line-designation" value="${Utils.escapeHtml(l.designation || '')}"></td>
                 <td><select name="tva" class="line-tva">${[0,7,10,14,20].map(v => `<option value="${v}" ${(l.tva||0)==v?'selected':''}>${v}%</option>`).join('')}</select></td>
                 <td><input type="number" name="quantite" class="line-qty" value="${l.quantite || 1}" min="0.01" step="0.01"></td>
-                <td><input type="text" name="unite" class="line-unite" list="unites-list" value="${Utils.escapeHtml(l.unite || '')}" placeholder="Choisir ou saisir une unité"></td>
+                <td>${Utils.uniteSelectHtml(l.unite)}</td>
                 <td><input type="number" name="prixUnitaire" class="line-price" value="${l.prixUnitaire || 0}" min="0" step="0.01"></td>
                 <td class="line-total">${Utils.formatMoney((l.quantite||0)*(l.prixUnitaire||0))}</td>
                 <td><button type="button" class="remove-line-btn" onclick="Commandes.supprimerLigne(this)">×</button></td></tr>`;
@@ -115,11 +116,13 @@ const Commandes = {
                     <table class="lines-table"><thead><tr><th class="col-designation">Désignation</th><th class="col-tva">TVA</th><th class="col-qty">Qté</th><th class="col-unit">Unité</th><th class="col-price">Prix unit.</th><th class="col-total">Total</th><th class="col-actions"></th></tr></thead>
                         <tbody id="lines-container">${linesHtml}</tbody></table>
                     <div class="lines-toolbar">
+                        ${ExcelImport.getImportButtonHtml('commande')}
                         <span class="lines-toolbar-spacer"></span>
                         <button type="button" class="add-line-btn" onclick="Commandes.ajouterLigne()">+ Ajouter une ligne</button>
                     </div>
                 </div>
                 <div class="document-totals"><table class="totals-table"><tr><td class="label">Total HT</td><td class="value" id="total-ht">0,00 Dhs</td></tr><tr><td class="label">Total TVA</td><td class="value" id="total-tva">0,00 Dhs</td></tr><tr><td class="label">Total TTC</td><td class="value total-ttc" id="total-ttc">0,00 Dhs</td></tr></table></div>
+                <div class="form-group"><label>Remarques (optionnel)</label><textarea name="remarques" rows="3" placeholder="Remarques ou notes...">${Utils.escapeHtml(d.remarques || '')}</textarea></div>
                 <div class="form-actions"><button type="submit" class="btn btn-primary">💾 Enregistrer</button><button type="button" class="btn btn-outline" onclick="Modal.fermer()">Annuler</button></div>
             </form>`;
     },
@@ -130,7 +133,7 @@ const Commandes = {
         row.innerHTML = `<td><input type="text" name="designation" class="line-designation" placeholder="Désignation"></td>
             <td><select name="tva" class="line-tva">${[0,7,10,14,20].map(v => `<option value="${v}" ${v==20?'selected':''}>${v}%</option>`).join('')}</select></td>
             <td><input type="number" name="quantite" class="line-qty" value="1" min="0.01" step="0.01"></td>
-            <td><input type="text" name="unite" class="line-unite" list="unites-list" value="" placeholder="Choisir ou saisir une unité"></td>
+            <td>${Utils.uniteSelectHtml('')}</td>
             <td><input type="number" name="prixUnitaire" class="line-price" value="0" min="0" step="0.01"></td>
             <td class="line-total">0,00 Dhs</td>
             <td><button type="button" class="remove-line-btn" onclick="Commandes.supprimerLigne(this)">×</button></td>`;
@@ -197,6 +200,7 @@ const Commandes = {
             date: data.get('date') || new Date().toISOString().split('T')[0],
             dateLivraison: data.get('dateLivraison') || '',
             objet: data.get('objet') || '',
+            remarques: data.get('remarques') || '',
             lignes, totalHT: totals.totalHT, totalTVA: totals.totalTVA, totalTTC: totals.totalTTC, statut: 'En cours'
         };
 
@@ -236,6 +240,7 @@ const Commandes = {
         const doc = this.getById(id);
         if (!doc) return Toast.error('Commande introuvable');
         const data = PdfExport.prepareDocumentData(doc, { nom: doc.clientNom, adresse: doc.clientAdresse, ville: doc.clientVille, ice: doc.clientIce, rc: doc.clientRC }, doc.lignes, doc.reference, { totalHT: doc.totalHT, totalTVA: doc.totalTVA, totalTTC: doc.totalTTC }, 'BON DE COMMANDE');
+        data.remarques = doc.remarques || '';
         await PdfExport.downloadPDF('BON DE COMMANDE', data, `Commande_${doc.reference}.pdf`);
     },
 
