@@ -186,7 +186,6 @@ Ce projet est sous license [À définir].
 ┌──────────────┬────────────────────────┐
 │ Role         │ Password               │
 ├──────────────┼────────────────────────┤
-│ 🔑 Admin    │  eqnovia-admin-2026    │
-│ 📊 Comptable│ eqnovia-comptable-2026 │
-│ 👁️ Visiteur │ eqnovia-visitor        │
+│ 🔑 Admin     │ eqnovia-admin-2026     │
+│ 📊 Comptable │ eqnovia-comptable-2026 │
 └──────────────┴────────────────────────

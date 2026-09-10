@@ -44,13 +44,7 @@ const PdfExport = {
             author: company.nom,
             creator: `${company.nom} - Système de Facturation`,
             keywords: `${docType}, ${data.reference}, ${company.nom}`
-        });
-        doc.setDisplayMode('fullheight', 'continuous');
-
-        // ===== DEVIS: completely custom layout matching model.pdf =====
-        if (docType === 'DEVIS') {
-            return this.generateDevisPDF(doc, data, company, pageWidth, pageHeight, margin, contentWidth);
-        }
+        });        doc.setDisplayMode('fullheight', 'continuous');
 
         // ===== TOP: Logo (left) + Title (right) =====
         try {
@@ -83,10 +77,9 @@ const PdfExport = {
         const companyAddrY = y + 4.5;
         doc.text(company.adresse, col1X, companyAddrY);
         doc.text(company.ville, col1X, companyAddrY + 4.5);
-        doc.text(`ICE : ${company.ice} / RC : ${company.rc}`, col1X, companyAddrY + 9);
-        doc.text(company.website, col1X, companyAddrY + 13.5);
+        doc.text(company.website, col1X, companyAddrY + 9);
 
-        const companyEndY = companyAddrY + 14;
+        const companyEndY = companyAddrY + 13.5;
 
         // --- Client Info (right column, aligned to the right) ---
         const rightWidth = contentWidth / 2 - 2;
@@ -114,10 +107,6 @@ const PdfExport = {
         }
         if (data.clientIce) {
             doc.text(`ICE : ${data.clientIce}`, clientRightX, clientLineY, { align: 'right' });
-            clientLineY += 4.5;
-        }
-        if (data.clientRC) {
-            doc.text(`RC : ${data.clientRC}`, clientRightX, clientLineY, { align: 'right' });
             clientLineY += 4.5;
         }
 
@@ -214,20 +203,10 @@ const PdfExport = {
         // ===== LINES TABLE (centered via autoTable margins) =====
         const isDevis = docType === 'DEVIS';
         const tableHeader = isDevis ? [
-            { content: 'Désignation', options: { halign: 'center' } },
-            { content: '% TVA', options: { halign: 'center' } },
-            { content: 'Quantité', options: { halign: 'center' } },
-            { content: 'Unité', options: { halign: 'center' } },
-            { content: 'Prix unitaire HT', options: { halign: 'center' } },
-            { content: 'Prix total HT', options: { halign: 'center' } }
+            ['Désignation', '% TVA', 'Quantité', 'Unité', 'Prix unitaire', 'Prix total'],
+            ['', '', '', '', 'HT', 'HT']
         ] : [
-            { content: 'Désignation', options: { halign: 'center' } },
-            { content: '% TVA', options: { halign: 'center' } },
-            { content: 'Montant TVA', options: { halign: 'center' } },
-            { content: 'Qté', options: { halign: 'center' } },
-            { content: 'Unité', options: { halign: 'center' } },
-            { content: 'Prix unitaire HT', options: { halign: 'center' } },
-            { content: 'Prix total HT', options: { halign: 'center' } }
+            ['Désignation', '% TVA', 'Montant TVA', 'Qté', 'Unité', 'Prix unitaire HT', 'Prix total HT']
         ];
 
         const tableData = data.lines.map(line => {
@@ -261,7 +240,7 @@ const PdfExport = {
         const tableMargin = 6;
 
         doc.autoTable({
-            head: [tableHeader],
+            head: tableHeader,
             body: tableData,
             startY: y,
             margin: { left: margin + tableMargin / 2, right: margin + tableMargin / 2, top: 28 },
@@ -299,6 +278,13 @@ const PdfExport = {
                 lineColor: [150, 150, 150],
                 lineWidth: 0.4,
                 cellPadding: compact ? 2 : 3.5
+            },
+            didParseCell: function (data) {
+                // For DEVIS two-row header: make the "HT" subheader row smaller and normal weight
+                if (isDevis && data.row.index === 1 && data.section === 'head') {
+                    data.cell.styles.fontSize = compact ? 6.5 : 7;
+                    data.cell.styles.fontStyle = 'normal';
+                }
             },
             bodyStyles: {
                 fontSize: compact ? 7.5 : 8,
@@ -613,7 +599,7 @@ const PdfExport = {
             doc.line(margin, footY - 3, pageWidth - margin, footY - 3);
 
             doc.setFontSize(7);
-            doc.setTextColor(130, 130, 130);
+            doc.setTextColor(0, 0, 0);
             doc.setFont('helvetica', 'normal');
 
             const footerText = `${company.nom} S.A. - ${company.adresse} ${company.ville} - Capital : ${company.capital} - ICE : ${company.ice} - RC : ${company.rc} - IF : ${company.if} - N° Taxe Professionnelle : ${company.tp}`;
@@ -630,253 +616,34 @@ const PdfExport = {
         return doc.output('blob');
     },
 
-    /**
-     * DEVIS-specific PDF generation matching the Python FPDF model.
-     * Blue header, centered title, bordered table, note, bank details, signature.
-     */
-    generateDevisPDF(doc, data, company, pageWidth, pageHeight, margin, contentWidth) {
-        const col1X = margin;
-        let y = 0;
-
-        // ===== BLUE HEADER BAR (0–45mm) =====
-        doc.setFillColor(31, 58, 95); // Bleu marine
-        doc.rect(0, 0, pageWidth, 45, 'F');
-
-        // Company name + address in white
-        y = 8;
-        doc.setFillColor(31, 58, 95);
-        doc.setTextColor(255, 255, 255);
-        doc.setFont('helvetica', 'bold');
-        doc.setFontSize(18);
-        doc.text(company.nom || 'Eqnovia', col1X, y);
-
-        doc.setFont('helvetica', '', 9);
-        doc.setFontSize(9);
-        y += 7;
-        doc.text(company.adresse || '20 rue Moussa Bnou Noussair', col1X, y);
-        y += 5;
-        doc.text(company.ville || 'Casablanca', col1X, y);
-        y += 5;
-        doc.text(company.website || 'www.eqnovia.ma', col1X, y);
-
-        // White separator line at bottom of header
-        doc.setDrawColor(255, 255, 255);
-        doc.setLineWidth(0.3);
-        doc.line(10, 43, pageWidth - 10, 43);
-        doc.setDrawColor(0, 0, 0);
-
-        // ===== TITLE: DEVIS (centered, below header) =====
-        y = 55;
-        doc.setTextColor(31, 58, 95);
-        doc.setFont('helvetica', 'bold');
-        doc.setFontSize(20);
-        doc.text('DEVIS', pageWidth / 2, y, { align: 'center' });
-        doc.setTextColor(0, 0, 0);
-
-        // ===== CLIENT INFO (left) + DATES/REF (right) =====
-        y = 65;
-
-        // Client name (bold, left)
-        doc.setFont('helvetica', 'bold');
-        doc.setFontSize(12);
-        doc.text(data.clientNom || '', col1X, y);
-n        // Dates and reference (right-aligned)
-        doc.setFont('helvetica', '', 10);
-        const rightX = pageWidth - margin;
-        doc.text(`Date du devis : ${data.date || ''}`, rightX, y, { align: 'right' });
-        y += 6;
-        doc.text(`Date de fin de validité : ${data.dateValidite || ''}`, rightX, y, { align: 'right' });
-        y += 6;
-        doc.setFont('helvetica', 'bold');
-        doc.text(`Référence : ${data.reference || ''}`, rightX, y, { align: 'right' });
-        doc.setFont('helvetica', '', 10);
-
-        // Client address (left, below name)
-        y = 65;
-        if (data.clientAdresse) {
-            doc.setFont('helvetica', '', 9);
-            doc.text(data.clientAdresse, col1X, y + 12);
-        }
-        if (data.clientVille) {
-            doc.setFont('helvetica', '', 9);
-            doc.text(data.clientVille, col1X, y + 17);
-        }
-
-        // ===== OBJET =====
-        y = 88;
-        doc.setFont('helvetica', 'B', 10);
-        doc.text(`Objet : ${data.objet || ''}`, col1X, y);
-        doc.setFont('helvetica', '', 10);
-        y += 10;
-
-        // ===== TABLE =====
-        // Column widths: Désignation=65, %TVA=20, Qté=18, Unité=18, PU HT=30, Total HT=35
-        const cols = [
-            { header: 'Désignation', width: 65, align: 'L' },
-            { header: '% TVA', width: 20, align: 'C' },
-            { header: 'Qté', width: 18, align: 'C' },
-            { header: 'Unité', width: 18, align: 'C' },
-            { header: 'Prix unitaire HT', width: 30, align: 'R' },
-            { header: 'Prix total HT', width: 35, align: 'R' }
-        ];
-        const totalTableW = cols.reduce((s, c) => s + c.width, 0);
-        const tableX = (pageWidth - totalTableW) / 2; // Center table
-        const rowH = 7;
-        const headerH = 8;
-
-        // Table header row (gray bg, bordered)
-        doc.setFillColor(240, 240, 240);
-        doc.setDrawColor(0, 0, 0);
-        doc.setLineWidth(0.3);
-        doc.setFont('helvetica', 'B', 10);
-        let tx = tableX;
-        cols.forEach(col => {
-            doc.rect(tx, y, col.width, headerH, 'FD');
-            doc.text(col.header, tx + col.width / 2, y + headerH / 2 + 1, { align: 'center' });
-            tx += col.width;
-        });
-        y += headerH;
-
-        // Table data rows
-        doc.setFont('helvetica', '', 9);
-        doc.setFillColor(255, 255, 255);
-        let totalHT = 0;
-        let totalTVA = 0;
-        const lignes = data.lines || [];
-
-        lignes.forEach(line => {
-            const qty = line.quantite || 0;
-            const pu = line.prixUnitaire || 0;
-            const tvaRate = line.tva || 0;
-            const lineTotalHT = qty * pu;
-            const montantTVA = lineTotalHT * tvaRate / 100;
-            totalHT += lineTotalHT;
-            totalTVA += montantTVA;
-
-            // Check page break
-            if (y + rowH > pageHeight - 25) {
-                doc.addPage();
-                y = margin + 10;
-            }
-
-            tx = tableX;
-            const rowData = [
-                { text: line.designation || '', align: 'L' },
-                { text: `${tvaRate}%`, align: 'C' },
-                { text: `${qty}`, align: 'C' },
-                { text: line.unite || '', align: 'C' },
-                { text: this.formatNumber(pu), align: 'R' },
-                { text: this.formatNumber(lineTotalHT), align: 'R' }
-            ];
-            rowData.forEach((cell, i) => {
-                doc.rect(tx, y, cols[i].width, rowH, 'D');
-                doc.text(cell.text, tx + 2, y + rowH / 2 + 1);
-                tx += cols[i].width;
-            });
-            y += rowH;
-        });
-
-        // ===== TOTALS (right-aligned, bordered) =====
-        const totalTTC = totalHT + totalTVA;
-        const totalsW = cols[4].width + cols[5].width; // 30 + 35 = 65
-        const totalsX = tableX + totalTableW - totalsW;
-        const totalRowH = 8;
-        const totalBigH = 10;
-
-        // Total HT
-        doc.setDrawColor(0, 0, 0);
-        doc.setLineWidth(0.3);
-        doc.setFont('helvetica', 'B', 10);
-        doc.rect(totalsX, y, cols[4].width, totalRowH, 'D');
-        doc.text('Total HT', totalsX + cols[4].width - 2, y + totalRowH / 2 + 1, { align: 'right' });
-        doc.rect(totalsX + cols[4].width, y, cols[5].width, totalRowH, 'D');
-        doc.text(this.formatNumber(totalHT), totalsX + totalTableW - 2, y + totalRowH / 2 + 1, { align: 'right' });
-        y += totalRowH;
-
-        // Total TVA
-        doc.rect(totalsX, y, cols[4].width, totalRowH, 'D');
-        doc.text('Total TVA', totalsX + cols[4].width - 2, y + totalRowH / 2 + 1, { align: 'right' });
-        doc.rect(totalsX + cols[4].width, y, cols[5].width, totalRowH, 'D');
-        doc.text(this.formatNumber(totalTVA), totalsX + totalTableW - 2, y + totalRowH / 2 + 1, { align: 'right' });
-        y += totalRowH;
-
-        // Total TTC (bold, bigger)
-        doc.setFont('helvetica', 'B', 12);
-        doc.rect(totalsX, y, cols[4].width, totalBigH, 'D');
-        doc.text('Total TTC', totalsX + cols[4].width - 2, y + totalBigH / 2 + 1.5, { align: 'right' });
-        doc.rect(totalsX + cols[4].width, y, cols[5].width, totalBigH, 'D');
-        doc.text(this.formatNumber(totalTTC), totalsX + totalTableW - 2, y + totalBigH / 2 + 1.5, { align: 'right' });
-        y += totalBigH + 4;
-
-        // ===== NOTE =====
-        doc.setFont('helvetica', 'I', 9);
-        doc.setTextColor(80, 80, 80);
-        const noteText = '*Hors fourniture et installation des modules photovoltaïques et de leurs structures de fixation (éléments déjà installés par le client)';
-        const noteLines = doc.splitTextToSize(noteText, contentWidth);
-        noteLines.forEach((line, idx) => {
-            doc.text(line, col1X, y + idx * 4);
-        });
-        y += noteLines.length * 4 + 6;
-
-        // ===== COORDONNÉES BANCAIRES =====
-        doc.setTextColor(0, 0, 0);
-        doc.setFont('helvetica', 'B', 10);
-        doc.text('Coordonnées bancaires :', col1X, y);
-        y += 5;
-        doc.setFont('helvetica', '', 9);
-        doc.text('Banque : Crédit du Maroc', col1X, y);
-        y += 5;
-        doc.text('Bénéficiaire : Eqnovia', col1X, y);
-        y += 5;
-        doc.text('RIB : 021 780 0000 177030150208 49', col1X, y);
-        y += 10;
-
-        // ===== SIGNATURE (bottom right) =====
-        const sigY = pageHeight - 35; // Position above footer
-        doc.setFont('helvetica', 'B', 10);
-        doc.text(data.ville || company.ville || '', col1X, sigY);
-        doc.text('Cachet, Date, Signature et mention "Bon pour Accord"', pageWidth - margin, sigY, { align: 'right' });
-
-        // ===== LEGAL FOOTER (on all pages) =====
-        const totalPages = doc.internal.getNumberOfPages();
-        for (let p = 1; p <= totalPages; p++) {
-            doc.setPage(p);
-            const footY = pageHeight - 16;
-            doc.setDrawColor(200, 200, 200);
-            doc.setLineWidth(0.3);
-            doc.line(margin, footY - 3, pageWidth - margin, footY - 3);
-            doc.setFontSize(7);
-            doc.setTextColor(130, 130, 130);
-            doc.setFont('helvetica', 'I', 7);
-            doc.text(`${company.nom || 'Eqnovia'} S.A. - ${company.adresse || '20 rue Moussa Bnou Noussair'} ${company.ville || 'Casablanca'} - Capital : ${company.capital || '2 000 000'} Dhs - ICE : ${company.ice || '001445583000022'} - RC : ${company.rc || '236357'} - IF : ${company.if || '40397283'} - N° Taxe Professionnelle : ${company.tp || '35546302'}`, pageWidth / 2, footY, { align: 'center' });
-            doc.text(`Page ${p} / ${totalPages}`, pageWidth / 2, footY + 4, { align: 'center' });
-        }
-
-        return doc.output('blob');
-    },
-
-    /**
-     * Download a PDF document and save a copy to the local folder
-     */
     async downloadPDF(docType, data, filename) {
-        const blob = await this.generatePDF(docType, data);
-        const url = URL.createObjectURL(blob);
-        const name = filename || `${docType}_${data.reference}.pdf`;
+        try {
+            if (typeof window.jspdf === 'undefined') {
+                Toast.error('Bibliothèque jsPDF non chargée. Vérifiez votre connexion internet et rafraîchissez la page.');
+                return;
+            }
+            const blob = await this.generatePDF(docType, data);
+            const url = URL.createObjectURL(blob);
+            const name = filename || `${docType}_${data.reference}.pdf`;
 
-        // Affiche l'aperçu dans une popup : l'utilisateur choisit de télécharger ou non
-        // Nettoyage préventif : révoque l'URL précédente si la popup a été fermée via le bouton ✕
-        if (this._pendingPdf) URL.revokeObjectURL(this._pendingPdf.url);
-        this._pendingPdf = { blob, url, docType, filename: name };
+            // Affiche l'aperçu dans une popup : l'utilisateur choisit de télécharger ou non
+            // Nettoyage préventif : révoque l'URL précédente si la popup a été fermée via le bouton ✕
+            if (this._pendingPdf) URL.revokeObjectURL(this._pendingPdf.url);
+            this._pendingPdf = { blob, url, docType, filename: name };
 
-        Modal.ouvrir('Aperçu PDF', `
-            <div class="pdf-preview">
-                <iframe src="${url}" class="pdf-preview-frame" title="Aperçu du PDF"></iframe>
-                <div class="form-actions">
-                    <button class="btn btn-pdf" onclick="PdfExport.telechargerDepuisApercu()">⬇️ Télécharger le PDF</button>
-                    <button class="btn btn-outline" onclick="PdfExport.fermerApercu()">Fermer</button>
+            Modal.ouvrir('Aperçu PDF', `
+                <div class="pdf-preview">
+                    <iframe src="${url}" class="pdf-preview-frame" title="Aperçu du PDF"></iframe>
+                    <div class="form-actions">
+                        <button class="btn btn-pdf" onclick="PdfExport.telechargerDepuisApercu()">⬇️ Télécharger le PDF</button>
+                        <button class="btn btn-outline" onclick="PdfExport.fermerApercu()">Fermer</button>
+                    </div>
                 </div>
-            </div>
-        `);
+            `);
+        } catch (e) {
+            console.error('Erreur génération PDF:', e.message, e.stack);
+            Toast.error('Erreur PDF : ' + (e.message || e) + '\n(' + (e.stack ? e.stack.split('\n')[1] || '' : '') + ')');
+        }
     },
 
     /**
@@ -886,22 +653,31 @@ const PdfExport = {
         const pending = this._pendingPdf;
         if (!pending) return;
 
-        // Déclenche le téléchargement du fichier
-        const a = document.createElement('a');
-        a.href = pending.url;
-        a.download = pending.filename;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
+        try {
+            // Déclenche le téléchargement du fichier
+            const a = document.createElement('a');
+            a.href = pending.url;
+            a.download = pending.filename;
+            a.style.display = 'none';
+            document.body.appendChild(a);
+            a.click();
+            // Retarder la suppression pour laisser le navigateur démarrer le téléchargement
+            setTimeout(() => {
+                if (a.parentNode) a.parentNode.removeChild(a);
+            }, 200);
 
-        // Sauvegarde une copie dans le dossier local en arrière-plan
-        if (FileStorage.isReady()) {
-            FileStorage.saveFile(pending.blob, pending.docType, pending.filename).then(saved => {
-                if (saved) console.log(`PDF sauvegardé dans ${pending.docType}`);
-            }).catch(e => console.warn('Sauvegarde locale échouée:', e));
+            // Sauvegarde une copie dans le dossier local en arrière-plan
+            if (FileStorage.isReady()) {
+                FileStorage.saveFile(pending.blob, pending.docType, pending.filename).then(saved => {
+                    if (saved) console.log(`PDF sauvegardé dans ${pending.docType}`);
+                }).catch(e => console.warn('Sauvegarde locale échouée:', e));
+            }
+
+            Toast.success('PDF téléchargé avec succès');
+        } catch (e) {
+            console.error('Erreur téléchargement PDF:', e);
+            Toast.error('Erreur lors du téléchargement : ' + (e.message || e));
         }
-
-        Toast.success('PDF téléchargé avec succès');
         this.fermerApercu();
     },
 

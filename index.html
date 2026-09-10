@@ -4,10 +4,10 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Eqnovia - Gestion de Facturation</title>
-    <link rel="stylesheet" href="css/styles.css?v=20260806e">
+    <link rel="stylesheet" href="css/styles.css?v=20260910a">
     <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
+    <script src="lib/jspdf.umd.min.js"></script>
+    <script src="lib/jspdf.plugin.autotable.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <!-- SDK Supabase pour la synchronisation en ligne -->
@@ -28,7 +28,6 @@
                     <select id="login-role" class="login-select">
                         <option value="admin">🔑 Admin</option>
                         <option value="comptable">📊 Comptable</option>
-                        <option value="visitor">👁️ Visiteur</option>
                     </select>
                 </div>
                 <div class="form-group">
@@ -131,7 +130,7 @@
                 <div id="recent-list" class="activity-list"></div>
             </div>
 
-            <!-- DOWNLOAD PDF SECTION (visible only for Comptable/Visitor) -->
+            <!-- DOWNLOAD PDF SECTION (visible only for Comptable) -->
             <div class="download-pdf-section" id="download-pdf-section" style="display:none;">
                 <h3>📥 Télécharger les documents en PDF</h3>
                 <p style="color:var(--text-light);font-size:0.85rem;margin-bottom:1rem;">Téléchargez tous vos documents dans un fichier ZIP compressé</p>
@@ -339,7 +338,7 @@
     <script src="js/commandes.js?v=20260806h"></script>
     <script src="js/livraisons.js?v=20260806h"></script>
     <script src="js/proforma.js?v=20260806h"></script>
-    <script src="js/pdf-export.js?v=20260806d"></script>
-    <script src="js/app.js?v=20260806e"></script>
+    <script src="js/pdf-export.js?v=20260907e"></script>
+    <script src="js/app.js?v=20260910a"></script>
 </body>
 </html>

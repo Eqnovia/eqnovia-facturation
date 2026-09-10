@@ -89,11 +89,10 @@ const Devis = {
 
         Modal.ouvrir(`Devis ${d.reference}`, `
             <div class="document-preview devis-layout">
-                <!-- HEADER: Logo left, DEVIS title + Client right -->
+                <!-- HEADER: Company info left, Contact person right -->
                 <div class="devis-header">
                     <div class="devis-header-left">
-                        <div class="devis-logo"><h2>eqnovia</h2></div>
-                        <p>${company.nom}</p>
+                        <p><strong>${company.nom}</strong></p>
                         <p>${company.adresse}</p>
                         <p>${company.ville}</p>
                         <p>${company.website}</p>
@@ -139,8 +138,8 @@ const Devis = {
                             <th class="col-tva">% TVA</th>
                             <th class="col-qty">Quantité</th>
                             <th class="col-unit">Unité</th>
-                            <th class="col-price">Prix unitaire HT</th>
-                            <th class="col-total">Prix total HT</th>
+                            <th class="col-price">Prix unitaire<br><span style="font-weight:normal;font-size:0.7rem;">HT</span></th>
+                            <th class="col-total">Prix total<br><span style="font-weight:normal;font-size:0.7rem;">HT</span></th>
                         </tr>
                     </thead>
                     <tbody>${linesHtml}</tbody>

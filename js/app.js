@@ -1,11 +1,10 @@
 /**
- * AUTH - Gestion de l'authentification (Admin / Visiteur)
+ * AUTH - Gestion de l'authentification (Admin / Comptable)
  */
 const Auth = {
     PASSWORDS: {
         admin: 'eqnovia-admin-2026',
-        comptable: 'eqnovia-comptable-2026',
-        visitor: 'eqnovia-visitor'
+        comptable: 'eqnovia-comptable-2026'
     },
 
     togglePassword() {
@@ -63,6 +62,11 @@ const Auth = {
     },
 
     async showApp(role) {
+        if (!this.PASSWORDS[role]) {
+            this.logout();
+            return;
+        }
+
         document.getElementById('login-screen').style.display = 'none';
         document.getElementById('app-container').style.display = 'block';
 
@@ -70,10 +74,9 @@ const Auth = {
         if (badge) {
             const badges = {
                 admin: '<span class="role-badge role-admin">🔑 Admin</span>',
-                comptable: '<span class="role-badge role-comptable">📊 Comptable</span>',
-                visitor: '<span class="role-badge role-visitor">👁️ Visiteur</span>'
+                comptable: '<span class="role-badge role-comptable">📊 Comptable</span>'
             };
-            badge.innerHTML = badges[role] || badges.visitor;
+            badge.innerHTML = badges[role] || '';
         }
 
         App.currentRole = role;
@@ -180,15 +183,13 @@ const App = {
     },
 
     /**
-     * Apply the current role (admin/visitor) to the UI
+     * Apply the current role (admin/comptable) to the UI
      */
     applyRole() {
         const body = document.body;
-        body.classList.remove('visitor-mode', 'comptable-mode');
+        body.classList.remove('comptable-mode');
 
-        if (this.currentRole === 'visitor') {
-            body.classList.add('visitor-mode');
-        } else if (this.currentRole === 'comptable') {
+        if (this.currentRole === 'comptable') {
             body.classList.add('comptable-mode');
         }
 
@@ -218,11 +219,6 @@ const App = {
     },
 
     naviguerVers(section) {
-        // Visitor: force dashboard only
-        const visitorRestricted = ['factures','devis','commandes','livraisons','proforma','contacts','produits'];
-        if (this.currentRole === 'visitor' && visitorRestricted.includes(section)) {
-            section = 'dashboard';
-        }
         // Comptable: can access documents but not contacts/produits
         const comptableRestricted = ['contacts','produits'];
         if (this.currentRole === 'comptable' && comptableRestricted.includes(section)) {
@@ -442,91 +438,245 @@ const App = {
     }
 };
 
-/**
- * EXCEL IMPORT - Import Excel files into document lines
- */
 const ExcelImport = {
-    /**
-     * Import an Excel file and return parsed rows
-     * @param {Function} callback - called with array of row objects
-     */
+    normaliserNom(nom) {
+        return String(nom ?? '')
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, ' ')
+            .trim();
+    },
+
+    typeColonne(nom) {
+        const nomNormalise = this.normaliserNom(nom);
+        if (!nomNormalise) return null;
+
+        if (/total/.test(nomNormalise) || /^(montant ht|montant ttc)$/.test(nomNormalise)) return 'total';
+        if (/^(designation|description|libelle|article|produit|service|item|nom)$/.test(nomNormalise) || /(^| )(designation|description|libelle|article|produit|service|item|nom)( |$)/.test(nomNormalise)) return 'designation';
+        if (/^(quantite|quantity|qte|qty|nombre)$/.test(nomNormalise) || /(^| )(quantite|quantity|qte|qty|nombre)( |$)/.test(nomNormalise)) return 'quantite';
+        if (/tva|taxe|tax|vat/.test(nomNormalise)) return 'tva';
+        if (/^(unite|unit|uom|mesure|u)$/.test(nomNormalise) || /(^| )(unite|unit|uom|mesure|u)( |$)/.test(nomNormalise)) return 'unite';
+        if (/(^| )(prix|price|tarif|pu|p u|amount|net)( |$)/.test(nomNormalise) || nomNormalise === 'montant') return 'prix';
+        return null;
+    },
+
+    typesLigne(ligne) {
+        return (ligne || []).map(cellule => this.typeColonne(cellule));
+    },
+
+    trouverLigneEnTetes(lignes) {
+        const limite = Math.min(lignes.length, 10);
+        for (let index = 0; index < limite; index++) {
+            const types = this.typesLigne(lignes[index]);
+            const utiles = types.filter(type => type && type !== 'total').length;
+            if (utiles >= 2) {
+                return { index, types };
+            }
+        }
+        return null;
+    },
+
+    nombre(valeur, defaut) {
+        if (typeof valeur === 'number') {
+            return Number.isFinite(valeur) ? valeur : defaut;
+        }
+
+        const texte = String(valeur ?? '').trim();
+        if (!texte) return defaut;
+
+        let normalise = texte
+            .replace(/\s+/g, '')
+            .replace(/(dhs?|mad|€|\$|%)/gi, '')
+            .replace(/[^0-9,.\-+]/g, '');
+
+        if (!normalise) return defaut;
+
+        const virgule = normalise.lastIndexOf(',');
+        const point = normalise.lastIndexOf('.');
+        if (virgule >= 0 && point >= 0) {
+            normalise = virgule > point
+                ? normalise.replace(/\./g, '').replace(',', '.')
+                : normalise.replace(/,/g, '');
+        } else if (virgule >= 0) {
+            normalise = normalise.replace(',', '.');
+        }
+
+        const resultat = Number(normalise);
+        return Number.isFinite(resultat) ? resultat : defaut;
+    },
+
+    estUnite(valeur) {
+        const nom = this.normaliserNom(valeur);
+        return ['unite', 'piece', 'ml', 'ens', 'kg', 'jours homme', 'heures', 'forfait', 'jour'].includes(nom);
+    },
+
+    estTauxTva(valeur) {
+        const texte = String(valeur ?? '').trim();
+        if (!texte) return false;
+        const nombre = this.nombre(valeur, null);
+        return nombre !== null && ([0, 7, 10, 14, 20].includes(nombre) || /%/.test(texte));
+    },
+
+    extraireLignes(lignes) {
+        const lignesNettes = (lignes || [])
+            .map(ligne => Array.isArray(ligne) ? ligne : [])
+            .filter(ligne => ligne.some(cellule => String(cellule ?? '').trim() !== ''));
+
+        if (!lignesNettes.length) return [];
+
+        const enTetes = this.trouverLigneEnTetes(lignesNettes);
+        const types = enTetes ? enTetes.types : [];
+        const lignesDonnees = enTetes ? lignesNettes.slice(enTetes.index + 1) : lignesNettes;
+        const indices = {};
+
+        types.forEach((type, index) => {
+            if (type && indices[type] === undefined) indices[type] = index;
+        });
+
+        if (!enTetes && lignesDonnees.length) {
+            const premiereLigne = lignesDonnees.find(ligne => ligne.length) || [];
+            if (indices.designation === undefined) {
+                const candidate = premiereLigne.findIndex(cellule => this.nombre(cellule, null) === null && String(cellule ?? '').trim());
+                indices.designation = candidate >= 0 ? candidate : 0;
+            }
+            if (indices.unite === undefined) {
+                const candidate = premiereLigne.findIndex(cellule => this.estUnite(cellule));
+                if (candidate >= 0) indices.unite = candidate;
+            }
+            if (indices.tva === undefined) {
+                const candidate = premiereLigne.findIndex((cellule, index) => index !== indices.designation && index !== indices.unite && this.estTauxTva(cellule));
+                if (candidate >= 0) indices.tva = candidate;
+            }
+            if (indices.quantite === undefined && premiereLigne.length > 1) indices.quantite = 1;
+            if (indices.prix === undefined) {
+                if (premiereLigne.length === 2) {
+                    indices.prix = 1;
+                } else if (indices.unite !== undefined) {
+                    indices.prix = indices.unite + 1;
+                } else {
+                    indices.prix = premiereLigne.length > 3 ? 2 : 1;
+                }
+            }
+        }
+
+        return lignesDonnees.map(ligne => {
+            const designation = String(ligne[indices.designation] ?? '').trim();
+            if (!designation) return null;
+
+            const quantite = indices.quantite !== undefined
+                ? this.nombre(ligne[indices.quantite], 1)
+                : 1;
+            let prixUnitaire = indices.prix !== undefined
+                ? this.nombre(ligne[indices.prix], 0)
+                : 0;
+
+            if (indices.prix === undefined && indices.total !== undefined) {
+                const total = this.nombre(ligne[indices.total], 0);
+                prixUnitaire = quantite > 0 ? total / quantite : 0;
+            }
+
+            let tva = indices.tva !== undefined
+                ? this.nombre(ligne[indices.tva], 20)
+                : 20;
+            if (tva > 0 && tva <= 1) tva *= 100;
+
+            const unite = indices.unite !== undefined
+                ? String(ligne[indices.unite] ?? '').trim()
+                : '';
+
+            return {
+                designation,
+                quantite: quantite > 0 ? quantite : 1,
+                prixUnitaire: prixUnitaire >= 0 ? prixUnitaire : 0,
+                tva,
+                unite: unite || 'Pièce'
+            };
+        }).filter(ligne => ligne);
+    },
+
     importerExcel(callback) {
         const input = document.createElement('input');
         input.type = 'file';
         input.accept = '.xlsx,.xls,.csv';
         input.onchange = async (e) => {
-            const file = e.target.files[0];
+            const file = e.target.files?.[0];
             if (!file) return;
+
             try {
+                if (typeof XLSX === 'undefined') {
+                    throw new Error('SheetJS non chargé');
+                }
+
                 const data = await file.arrayBuffer();
-                const workbook = XLSX.read(data, { type: 'array' });
-                const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
-                const jsonData = XLSX.utils.sheet_to_json(firstSheet, { defval: '' });
-                if (jsonData.length === 0) {
-                    Toast.warning('Le fichier Excel est vide');
+                const workbook = XLSX.read(data, { type: 'array', raw: false });
+                const sheetName = workbook.SheetNames.find(name => workbook.Sheets[name]?.['!ref']);
+                if (!sheetName) {
+                    Toast.warning('Le fichier Excel ne contient aucune feuille lisible');
                     return;
                 }
-                callback(jsonData);
+
+                const sheet = workbook.Sheets[sheetName];
+                const lignes = XLSX.utils.sheet_to_json(sheet, {
+                    header: 1,
+                    defval: '',
+                    raw: false,
+                    blankrows: false
+                });
+                const lignesImportees = this.extraireLignes(lignes);
+
+                if (!lignesImportees.length) {
+                    Toast.warning('Aucune ligne exploitable trouvée dans le fichier Excel');
+                    return;
+                }
+
+                callback(lignesImportees);
             } catch (err) {
                 console.error('Erreur import Excel:', err);
-                Toast.error('Erreur lors de la lecture du fichier Excel');
+                Toast.error('Erreur lors de la lecture du fichier Excel. Vérifiez que le fichier est bien au format .xlsx, .xls ou .csv.');
             }
         };
         input.click();
     },
 
-    /**
-     * Generate HTML for an import button
-     */
     getImportButtonHtml(formType) {
         return `<button type="button" class="btn-import-excel" onclick="ExcelImport.importerDansFormulaire('${formType}')" title="Importer des lignes depuis un fichier Excel">📥 Importer Excel</button>`;
     },
 
-    /**
-     * Import Excel data into the current form's lines
-     */
     importerDansFormulaire(formType) {
         this.importerExcel((rows) => {
             const container = document.getElementById('lines-container');
             if (!container) return;
 
-            // Try to detect columns based on headers
-            const keys = Object.keys(rows[0]);
-            const designationKey = keys.find(k => /désignation|designation|description|article|produit/i.test(k)) || keys[0];
-            const qtyKey = keys.find(k => /quantit|qty|qte|nombre/i.test(k));
-            const priceKey = keys.find(k => /prix|price|montant|tarif|pu/i.test(k));
-            const tvaKey = keys.find(k => /tva|tax|vat/i.test(k));
-            const uniteKey = keys.find(k => /unit|mesure/i.test(k));
+            const lignesExistantes = Array.from(container.querySelectorAll('.line-row'));
+            if (lignesExistantes.length === 1) {
+                const seuleLigne = lignesExistantes[0];
+                const designation = seuleLigne.querySelector('.line-designation')?.value.trim() || '';
+                const quantite = seuleLigne.querySelector('.line-qty')?.value.trim() || '';
+                const prix = seuleLigne.querySelector('.line-price')?.value.trim() || '';
+                if (!designation && (!quantite || quantite === '1') && (!prix || prix === '0')) {
+                    seuleLigne.remove();
+                }
+            }
+
+            const removeFn = {
+                'facture': 'Factures',
+                'devis': 'Devis',
+                'commande': 'Commandes',
+                'proforma': 'ProForma',
+                'livraison': 'Livraisons'
+            }[formType] || 'Factures';
 
             let importedCount = 0;
             rows.forEach(row => {
-                const designation = row[designationKey] || '';
-                if (!designation) return; // skip empty rows
-
-                const quantite = qtyKey ? (parseFloat(row[qtyKey]) || 1) : 1;
-                const prixUnitaire = priceKey ? (parseFloat(row[priceKey]) || 0) : 0;
-                const tva = tvaKey ? (parseInt(row[tvaKey]) || 20) : 20;
-                const unite = uniteKey ? (row[uniteKey] || 'Pièce') : 'Pièce';
-
-                // Create a new line row
+                const { designation, quantite, prixUnitaire, tva, unite } = row;
                 const row_el = document.createElement('tr');
                 row_el.className = 'line-row';
-                
-                let tvaOptions = '';
-                if (formType === 'livraison') {
-                    tvaOptions = '';
-                } else {
-                    tvaOptions = `<select name="tva" class="line-tva">${[0,7,10,14,20].map(v => `<option value="${v}" ${tva==v?'selected':''}>${v}%</option>`).join('')}</select>`;
-                }
 
-                // Determine which module's supprimerLigne to call
-                const removeFn = {
-                    'facture': 'Factures',
-                    'devis': 'Devis',
-                    'commande': 'Commandes',
-                    'proforma': 'ProForma',
-                    'livraison': 'Livraisons'
-                }[formType] || 'Factures';
+                let tvaOptions = '';
+                if (formType !== 'livraison') {
+                    tvaOptions = `<select name="tva" class="line-tva">${[0,7,10,14,20].map(v => `<option value="${v}" ${tva === v ? 'selected' : ''}>${v}%</option>`).join('')}</select>`;
+                }
 
                 if (formType === 'livraison') {
                     row_el.innerHTML = `<td><input type="text" name="designation" class="line-designation" value="${Utils.escapeHtml(designation)}"></td>
@@ -543,15 +693,20 @@ const ExcelImport = {
                         <td class="line-total">${Utils.formatMoney(quantite * prixUnitaire)}</td>
                         <td><button type="button" class="remove-line-btn" onclick="${removeFn}.supprimerLigne(this)">×</button></td>`;
                 }
+
                 container.appendChild(row_el);
                 importedCount++;
             });
 
-            // Refresh totals
-            if (typeof Factures?.actualiserTotaux === 'function') Factures.actualiserTotaux();
-            if (typeof Devis?.actualiserTotaux === 'function') Devis.actualiserTotaux();
-            if (typeof Commandes?.actualiserTotaux === 'function') Commandes.actualiserTotaux();
-            if (typeof ProForma?.actualiserTotaux === 'function') ProForma.actualiserTotaux();
+            const actualiseur = {
+                'facture': Factures,
+                'devis': Devis,
+                'commande': Commandes,
+                'proforma': ProForma
+            }[formType];
+            if (actualiseur && typeof actualiseur.actualiserTotaux === 'function') {
+                actualiseur.actualiserTotaux();
+            }
 
             LineHistory.saveState();
             Toast.success(`${importedCount} ligne(s) importée(s) avec succès`);
@@ -665,13 +820,22 @@ const MonthlyDownload = {
      */
     triggerDownload() {
         if (!this._pendingZip) return;
-        const a = document.createElement('a');
-        a.href = this._pendingZip;
-        a.download = this._pendingZipName || 'Eqnovia.zip';
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        Toast.success('✅ Téléchargement démarré !');
+        try {
+            const a = document.createElement('a');
+            a.href = this._pendingZip;
+            a.download = this._pendingZipName || 'Eqnovia.zip';
+            a.style.display = 'none';
+            document.body.appendChild(a);
+            a.click();
+            // Retarder la suppression pour laisser le navigateur démarrer le téléchargement
+            setTimeout(() => {
+                if (a.parentNode) a.parentNode.removeChild(a);
+            }, 200);
+            Toast.success('✅ Téléchargement démarré !');
+        } catch (e) {
+            console.error('Erreur téléchargement ZIP:', e);
+            Toast.error('Erreur lors du téléchargement : ' + (e.message || e));
+        }
     },
 
     /**

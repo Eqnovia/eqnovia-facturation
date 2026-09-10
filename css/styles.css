@@ -1330,6 +1330,17 @@ body {
     font-size: 0.85rem;
 }
 
+.devis-table .col-price,
+.devis-table .col-total {
+    line-height: 1.2;
+}
+
+.devis-table .col-price span,
+.devis-table .col-total span {
+    font-size: 0.7rem;
+    font-weight: normal;
+}
+
 /* TOTALS */
 
 .devis-totals {
@@ -1504,7 +1515,7 @@ body {
     background: #1557b0;
 }
 
-/* ADMIN/VISITOR ROLE BADGES */
+/* ROLE BADGES */
 
 .role-badge {
     display: inline-block;
@@ -1516,11 +1527,6 @@ body {
 
 .role-admin {
     background: var(--primary-color);
-    color: white;
-}
-
-.role-visitor {
-    background: #ff9800;
     color: white;
 }
 
@@ -1579,49 +1585,6 @@ body {
 .role-switcher select option {
     background: var(--primary-color);
     color: white;
-}
-
-/* VISITOR MODE - No document access, download only */
-
-.visitor-mode [data-doc-section],
-.visitor-mode [data-section="contacts"],
-.visitor-mode [data-section="produits"] {
-    display: none !important;
-}
-
-.visitor-mode #factures,
-.visitor-mode #devis,
-.visitor-mode #commandes,
-.visitor-mode #livraisons,
-.visitor-mode #proforma,
-.visitor-mode #contacts,
-.visitor-mode #produits {
-    display: none !important;
-}
-
-.visitor-mode .btn-primary,
-.visitor-mode .btn-warning,
-.visitor-mode .btn-danger,
-.visitor-mode .section-header .btn-primary,
-.visitor-mode .add-line-btn,
-.visitor-mode .remove-line-btn,
-.visitor-mode .paiements-actions,
-.visitor-mode .attachments-actions,
-.visitor-mode .btn-folder,
-.visitor-mode #folder-config-btn {
-    display: none !important;
-}
-
-.visitor-mode .line-unite,
-.visitor-mode .line-designation,
-.visitor-mode .line-qty,
-.visitor-mode .line-price,
-.visitor-mode .line-tva,
-.visitor-mode input,
-.visitor-mode select,
-.visitor-mode textarea {
-    pointer-events: none;
-    opacity: 0.7;
 }
 
 /* DOWNLOAD PDF SECTION */
