@@ -106,6 +106,7 @@ const App = {
     async init() {
         Modal.init();
         this.setupNavigation();
+        document.body.classList.add('loaded');
 
         // Check login status
         if (Auth.isLoggedIn()) {
@@ -183,6 +184,34 @@ const App = {
     },
 
     /**
+     * Initialize dashboard month/year filters
+     */
+    initDashboardFilters() {
+        const monthSelect = document.getElementById('dashboard-month');
+        const yearSelect = document.getElementById('dashboard-year');
+        if (!monthSelect || !yearSelect) return;
+
+        const now = new Date();
+        const currentMonth = now.getMonth();
+        const currentYear = now.getFullYear();
+
+        // Populate months
+        const monthNames = ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'];
+        monthSelect.innerHTML = monthNames.map((name, idx) => 
+            `<option value="${idx}" ${idx === currentMonth ? 'selected' : ''}>${name}</option>`
+        ).join('');
+
+        // Populate years (last 5 years + current)
+        const years = [];
+        for (let y = currentYear - 4; y <= currentYear; y++) {
+            years.push(y);
+        }
+        yearSelect.innerHTML = years.map(y => 
+            `<option value="${y}" ${y === currentYear ? 'selected' : ''}>${y}</option>`
+        ).join('');
+    },
+
+    /**
      * Apply the current role (admin/comptable) to the UI
      */
     applyRole() {
@@ -251,28 +280,82 @@ const App = {
     },
 
     afficherTableauBord() {
+        // Initialize filters on first load
+        if (!App._dashboardFiltersInitialized) {
+            App.initDashboardFilters();
+            App._dashboardFiltersInitialized = true;
+        }
+
         const factures = Database.get(Database.KEYS.FACTURES) || [];
         const devis = Database.get(Database.KEYS.DEVIS) || [];
         const commandes = Database.get(Database.KEYS.COMMANDES) || [];
         const clients = Database.get(Database.KEYS.CLIENTS) || [];
 
-        // Calculate stats
-        const now = new Date();
-        const currentMonth = now.getMonth();
-        const currentYear = now.getFullYear();
+        // Get selected month/year from filters
+        const monthSelect = document.getElementById('dashboard-month');
+        const yearSelect = document.getElementById('dashboard-year');
+        const selectedMonth = monthSelect ? parseInt(monthSelect.value) : new Date().getMonth();
+        const selectedYear = yearSelect ? parseInt(yearSelect.value) : new Date().getFullYear();
 
-        const facturesMois = factures.filter(f => {
-            const d = new Date(f.date);
-            return d.getMonth() === currentMonth && d.getFullYear() === currentYear;
+        // Update stat labels
+        const monthNames = ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'];
+        const periodLabel = `${monthNames[selectedMonth]} ${selectedYear}`;
+        
+        document.getElementById('stat-factures-label').textContent = periodLabel;
+        document.getElementById('stat-ca-label').textContent = periodLabel;
+        
+        // Filter data by selected period
+        const filterByPeriod = (docs) => docs.filter(d => {
+            if (!d.date) return false;
+            const p = String(d.date).split('-');
+            return p.length >= 3 && parseInt(p[0]) === selectedYear && parseInt(p[1]) - 1 === selectedMonth;
         });
 
+        const facturesMois = filterByPeriod(factures);
+        const devisMois = filterByPeriod(devis);
+        const commandesMois = filterByPeriod(commandes);
+
+        // Previous period for trend comparison
+        const prevMonth = selectedMonth === 0 ? 11 : selectedMonth - 1;
+        const prevYear = selectedMonth === 0 ? selectedYear - 1 : selectedYear;
+        const filterPrevPeriod = (docs) => docs.filter(d => {
+            if (!d.date) return false;
+            const p = String(d.date).split('-');
+            return p.length >= 3 && parseInt(p[0]) === prevYear && parseInt(p[1]) - 1 === prevMonth;
+        });
+        const facturesPrev = filterPrevPeriod(factures);
+        const devisPrev = filterPrevPeriod(devis);
+        const caPrev = filterPrevPeriod(factures).reduce((sum, f) => sum + (f.totalTTC || 0), 0);
+
+        // Calculate stats
         const caMois = facturesMois.reduce((sum, f) => sum + (f.totalTTC || 0), 0);
         const impayees = factures.filter(f => Factures.getStatutReel(f) !== 'Payée').length;
 
+        // Update stat cards
         document.getElementById('stat-factures').textContent = facturesMois.length;
         document.getElementById('stat-devis').textContent = devis.filter(d => d.statut === 'En attente' || !d.statut).length;
         document.getElementById('stat-ca').textContent = Utils.formatMoney(caMois);
         document.getElementById('stat-impayees').textContent = impayees;
+
+        // Calculate trends
+        const trendFactures = facturesPrev.length > 0 
+            ? Math.round(((facturesMois.length - facturesPrev.length) / facturesPrev.length) * 100)
+            : (facturesMois.length > 0 ? 100 : 0);
+        const trendDevis = devisPrev.length > 0
+            ? Math.round(((devisMois.length - devisPrev.length) / devisPrev.length) * 100)
+            : (devisMois.length > 0 ? 100 : 0);
+        const trendCA = caPrev > 0
+            ? Math.round(((caMois - caPrev) / caPrev) * 100)
+            : (caMois > 0 ? 100 : 0);
+
+        // Update trend indicators
+        this.updateTrend('stat-factures-trend', trendFactures);
+        this.updateTrend('stat-devis-trend', trendDevis);
+        this.updateTrend('stat-ca-trend', trendCA);
+        this.updateTrend('stat-impayees-trend', impayees > 0 ? '⚠' : '✓', impayees === 0);
+
+        // Render charts
+        this.renderCharts(factures, devis, commandes, clients, selectedYear);
 
         // Recent activity
         const allDocs = [
@@ -298,6 +381,322 @@ const App = {
                 <span class="activity-date">${Utils.formatDate(d.date)}</span>
             </div>
         `).join('');
+    },
+
+    /**
+     * Update trend indicator
+     */
+    updateTrend(elementId, value, isPositive = null) {
+        const el = document.getElementById(elementId);
+        if (!el) return;
+        
+        let icon, className;
+        if (typeof value === 'number') {
+            isPositive = value >= 0;
+            icon = isPositive ? '↑' : '↓';
+            className = isPositive ? 'trend-up' : 'trend-down';
+            value = Math.abs(value) + '%';
+        } else {
+            icon = value;
+            className = isPositive ? 'trend-up' : 'trend-neutral';
+        }
+        el.innerHTML = `<span class="${className}">${icon} ${value}</span>`;
+    },
+
+    /**
+     * Render all dashboard charts
+     */
+    renderCharts(factures, devis, commandes, clients, selectedYear) {
+        // Destroy existing charts
+        if (this.chartCA) this.chartCA.destroy();
+        if (this.chartStatuts) this.chartStatuts.destroy();
+        if (this.chartMensuel) this.chartMensuel.destroy();
+        if (this.chartTopClients) this.chartTopClients.destroy();
+
+        // 1. CA Evolution (last 6 months)
+        this.renderCAChart(factures, selectedYear);
+        // 2. Status Distribution
+        this.renderStatusChart(factures);
+        // 3. Monthly invoices for selected year
+        this.renderMensuelChart(factures, selectedYear);
+        // 4. Top 5 Clients
+        this.renderTopClientsChart(factures, clients);
+    },
+
+    /**
+     * Render CA evolution chart (last 6 months)
+     */
+    renderCAChart(factures, selectedYear) {
+        const ctx = document.getElementById('chart-ca-evolution');
+        if (!ctx || typeof Chart === 'undefined') return;
+
+        const labels = [];
+        const data = [];
+        const now = new Date();
+        
+        for (let i = 5; i >= 0; i--) {
+            const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+            const year = d.getFullYear();
+            const month = d.getMonth();
+            labels.push(d.toLocaleDateString('fr-FR', { month: 'short', year: '2-digit' }));
+            
+            const ca = factures
+                .filter(f => {
+                    if (!f.date) return false;
+                    const p = String(f.date).split('-');
+                    return p.length >= 3 && parseInt(p[0]) === year && parseInt(p[1]) - 1 === month;
+                })
+                .reduce((sum, f) => sum + (f.totalTTC || 0), 0);
+            data.push(ca);
+        }
+
+        this.chartCA = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels,
+                datasets: [{
+                    label: 'Chiffre d\'affaires (Dhs)',
+                    data,
+                    borderColor: '#3C41CD',
+                    backgroundColor: 'rgba(60, 65, 205, 0.1)',
+                    fill: true,
+                    tension: 0.3,
+                    pointBackgroundColor: '#3C41CD',
+                    pointBorderColor: '#fff',
+                    pointBorderWidth: 2,
+                    pointRadius: 5,
+                    pointHoverRadius: 7
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        backgroundColor: '#333',
+                        titleColor: '#fff',
+                        bodyColor: '#fff',
+                        padding: 12,
+                        displayColors: false,
+                        callbacks: {
+                            label: (ctx) => `CA: ${Utils.formatMoney(ctx.parsed.y)}`
+                        }
+                    }
+                },
+                scales: {
+                    x: { grid: { display: false } },
+                    y: { 
+                        grid: { color: '#f0f0f0' },
+                        beginAtZero: true,
+                        ticks: {
+                            callback: (value) => Utils.formatMoney(value, true)
+                        }
+                    }
+                }
+            }
+        });
+    },
+
+    /**
+     * Render status distribution pie chart
+     */
+    renderStatusChart(factures) {
+        const ctx = document.getElementById('chart-statuts');
+        if (!ctx || typeof Chart === 'undefined') return;
+
+        const statuts = { 'Payée': 0, 'Impayée': 0, 'Partiellement payée': 0 };
+        factures.forEach(f => {
+            const s = Factures.getStatutReel(f);
+            if (statuts[s] !== undefined) statuts[s]++;
+            else statuts['Impayée']++;
+        });
+
+        this.chartStatuts = new Chart(ctx, {
+            type: 'doughnut',
+            data: {
+                labels: Object.keys(statuts),
+                datasets: [{
+                    data: Object.values(statuts),
+                    backgroundColor: ['#00C853', '#FF5252', '#FFB300'],
+                    borderWidth: 0,
+                    hoverOffset: 10
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { position: 'bottom', labels: { padding: 15, font: { size: 11 } } },
+                    tooltip: {
+                        callbacks: {
+                            label: (ctx) => `${ctx.label}: ${ctx.parsed} (${((ctx.parsed / ctx.dataset.data.reduce((a,b)=>a+b,0)) * 100).toFixed(1)}%)`
+                        }
+                    }
+                },
+                cutout: '65%'
+            }
+        });
+    },
+
+    /**
+     * Render monthly invoices chart for selected year
+     */
+    renderMensuelChart(factures, selectedYear) {
+        const ctx = document.getElementById('chart-factures-mensuel');
+        if (!ctx || typeof Chart === 'undefined') return;
+
+        const monthNames = ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Jun', 'Jul', 'Aoû', 'Sep', 'Oct', 'Nov', 'Déc'];
+        const labels = monthNames;
+        const countData = [];
+        const caData = [];
+
+        for (let m = 0; m < 12; m++) {
+            const filtered = factures.filter(f => {
+                if (!f.date) return false;
+                const p = String(f.date).split('-');
+                return p.length >= 3 && parseInt(p[0]) === selectedYear && parseInt(p[1]) - 1 === m;
+            });
+            countData.push(filtered.length);
+            caData.push(filtered.reduce((sum, f) => sum + (f.totalTTC || 0), 0));
+        }
+
+        this.chartMensuel = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels,
+                datasets: [
+                    {
+                        label: 'Nombre de factures',
+                        data: countData,
+                        backgroundColor: 'rgba(60, 65, 205, 0.7)',
+                        borderColor: '#3C41CD',
+                        borderWidth: 1,
+                        yAxisID: 'y'
+                    },
+                    {
+                        label: 'CA (Dhs)',
+                        data: caData,
+                        type: 'line',
+                        borderColor: '#00C853',
+                        backgroundColor: 'rgba(0, 200, 83, 0.1)',
+                        fill: false,
+                        tension: 0.3,
+                        yAxisID: 'y1',
+                        pointBackgroundColor: '#00C853',
+                        pointRadius: 4
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { position: 'top', labels: { font: { size: 11 } } },
+                    tooltip: {
+                        callbacks: {
+                            label: (ctx) => {
+                                if (ctx.dataset.yAxisID === 'y1') {
+                                    return `CA: ${Utils.formatMoney(ctx.parsed.y)}`;
+                                }
+                                return `Factures: ${ctx.parsed.y}`;
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    x: { grid: { display: false } },
+                    y: { 
+                        type: 'linear',
+                        position: 'left',
+                        beginAtZero: true,
+                        grid: { color: '#f0f0f0' },
+                        title: { display: true, text: 'Nb factures', font: { size: 10 } }
+                    },
+                    y1: {
+                        type: 'linear',
+                        position: 'right',
+                        beginAtZero: true,
+                        grid: { drawOnChartArea: false },
+                        title: { display: true, text: 'CA (Dhs)', font: { size: 10 } },
+                        ticks: { callback: (value) => Utils.formatMoney(value, true) }
+                    }
+                }
+            }
+        });
+    },
+
+    /**
+     * Render top 5 clients by CA
+     */
+    renderTopClientsChart(factures, clients) {
+        const ctx = document.getElementById('chart-top-clients');
+        if (!ctx || typeof Chart === 'undefined') return;
+
+        // Calculate CA per client
+        const clientCA = {};
+        factures.forEach(f => {
+            if (Factures.getStatutReel(f) === 'Payée') {
+                const key = f.clientNom || 'Inconnu';
+                clientCA[key] = (clientCA[key] || 0) + (f.totalTTC || 0);
+            }
+        });
+
+        // Sort and take top 5
+        const sorted = Object.entries(clientCA)
+            .sort((a, b) => b[1] - a[1])
+            .slice(0, 5);
+
+        const labels = sorted.map(([name]) => name.length > 20 ? name.substring(0, 18) + '..' : name);
+        const data = sorted.map(([, ca]) => ca);
+
+        // If no data, show placeholder
+        if (labels.length === 0) {
+            labels.push('Aucune donnée');
+            data.push(0);
+        }
+
+        this.chartTopClients = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels,
+                datasets: [{
+                    label: 'CA (Dhs)',
+                    data,
+                    backgroundColor: [
+                        'rgba(60, 65, 205, 0.8)',
+                        'rgba(60, 65, 205, 0.65)',
+                        'rgba(60, 65, 205, 0.5)',
+                        'rgba(60, 65, 205, 0.35)',
+                        'rgba(60, 65, 205, 0.2)'
+                    ],
+                    borderColor: '#3C41CD',
+                    borderWidth: 1,
+                    borderRadius: 6
+                }]
+            },
+            options: {
+                indexAxis: 'y',
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            label: (ctx) => `CA: ${Utils.formatMoney(ctx.parsed.x)}`
+                        }
+                    }
+                },
+                scales: {
+                    x: { 
+                        grid: { color: '#f0f0f0' },
+                        beginAtZero: true,
+                        ticks: { callback: (value) => Utils.formatMoney(value, true) }
+                    },
+                    y: { grid: { display: false } }
+                }
+            }
+        });
     },
 
     initialiserDonneesDemo() {

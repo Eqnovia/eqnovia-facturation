@@ -51,14 +51,18 @@ const Factures = {
 
     afficher() {
         const factures = this.getAll();
+        Utils.populateDateFilter('filter-factures-month', 'filter-factures-year');
         const filterText = (document.getElementById('filter-factures')?.value || '').toLowerCase();
         const filterStatus = document.getElementById('filter-status')?.value || '';
+        const filterYear = document.getElementById('filter-factures-year')?.value || '';
+        const filterMonth = document.getElementById('filter-factures-month')?.value || '';
 
         const filtered = factures.filter(f => {
             const matchText = (f.reference || '').toLowerCase().includes(filterText) ||
                 (f.clientNom || '').toLowerCase().includes(filterText);
             const matchStatus = !filterStatus || this.getStatutReel(f) === filterStatus;
-            return matchText && matchStatus;
+            const matchDate = Utils.filterByDate(f, filterYear, filterMonth);
+            return matchText && matchStatus && matchDate;
         });
 
         const container = document.getElementById('factures-list');

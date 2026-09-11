@@ -19,8 +19,14 @@ const Livraisons = {
 
     afficher() {
         const items = this.getAll();
+        Utils.populateDateFilter('filter-livraisons-month', 'filter-livraisons-year');
         const filter = (document.getElementById('filter-livraisons')?.value || '').toLowerCase();
-        const filtered = items.filter(d => (d.reference || '').toLowerCase().includes(filter) || (d.clientNom || '').toLowerCase().includes(filter));
+        const filterYear = document.getElementById('filter-livraisons-year')?.value || '';
+        const filterMonth = document.getElementById('filter-livraisons-month')?.value || '';
+        const filtered = items.filter(d =>
+            ((d.reference || '').toLowerCase().includes(filter) || (d.clientNom || '').toLowerCase().includes(filter)) &&
+            Utils.filterByDate(d, filterYear, filterMonth)
+        );
 
         const container = document.getElementById('livraisons-list');
         if (filtered.length === 0) {

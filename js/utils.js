@@ -468,6 +468,52 @@ const Utils = {
         return this.uniteSelectHtml(currentValue, nameAttr);
     },
 
+    /**
+     * Noms des mois en français (utilisé par les filtres date et le tableau de bord)
+     */
+    MONTH_NAMES: ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'],
+
+    /**
+     * Remplit les listes déroulantes Mois/Année d'un filtre date.
+     * N'opère que si la liste n'a pas déjà été remplie (évite de perdre la sélection).
+     * @param {string} monthId id du <select> mois
+     * @param {string} yearId  id du <select> année
+     */
+    populateDateFilter(monthId, yearId) {
+        const now = new Date();
+        const mSel = document.getElementById(monthId);
+        if (mSel && mSel.children.length <= 1) {
+            mSel.innerHTML = '<option value="">Tous les mois</option>' +
+                this.MONTH_NAMES.map((n, i) =>
+                    `<option value="${i}" ${i === now.getMonth() ? 'selected' : ''}>${n}</option>`
+                ).join('');
+        }
+        const ySel = document.getElementById(yearId);
+        if (ySel && ySel.children.length <= 1) {
+            const opts = [];
+            for (let y = now.getFullYear() - 4; y <= now.getFullYear(); y++) {
+                opts.push(`<option value="${y}" ${y === now.getFullYear() ? 'selected' : ''}>${y}</option>`);
+            }
+            ySel.innerHTML = '<option value="">Toutes les années</option>' + opts.join('');
+        }
+    },
+
+    /**
+     * Vérifie qu'une date (YYYY-MM-DD) correspond aux filtres année/mois donnés.
+     * Une valeur vide / "" signifie « toutes les valeurs ».
+     */
+    filterByDate(doc, year, month) {
+        const hasFilter = (year && year !== '') || (month && month !== '');
+        if (!doc || !doc.date) return hasFilter ? false : true;
+        const parts = String(doc.date).split('-');
+        if (parts.length < 3) return hasFilter ? false : true;
+        const y = parseInt(parts[0], 10);
+        const m = parseInt(parts[1], 10) - 1;
+        if (year && year !== '' && y !== parseInt(year, 10)) return false;
+        if (month && month !== '' && m !== parseInt(month, 10)) return false;
+        return true;
+    },
+
     // Format a data-URL length (in chars) as a readable file size (~0.75 bytes per char)
     formatBytes(dataUrlLength) {
         const bytes = Math.round((dataUrlLength || 0) * 0.75);

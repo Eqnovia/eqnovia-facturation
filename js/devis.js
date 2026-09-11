@@ -19,8 +19,14 @@ const Devis = {
 
     afficher() {
         const devis = this.getAll();
+        Utils.populateDateFilter('filter-devis-month', 'filter-devis-year');
         const filter = (document.getElementById('filter-devis')?.value || '').toLowerCase();
-        const filtered = devis.filter(d => (d.reference || '').toLowerCase().includes(filter) || (d.clientNom || '').toLowerCase().includes(filter));
+        const filterYear = document.getElementById('filter-devis-year')?.value || '';
+        const filterMonth = document.getElementById('filter-devis-month')?.value || '';
+        const filtered = devis.filter(d =>
+            ((d.reference || '').toLowerCase().includes(filter) || (d.clientNom || '').toLowerCase().includes(filter)) &&
+            Utils.filterByDate(d, filterYear, filterMonth)
+        );
 
         const container = document.getElementById('devis-list');
         if (filtered.length === 0) {

@@ -1660,3 +1660,222 @@ body {
     pointer-events: none;
     opacity: 0.7;
 }
+
+/* ===== DASHBOARD ENHANCED STYLES ===== */
+
+.dashboard-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1.5rem;
+    flex-wrap: wrap;
+    gap: 1rem;
+}
+
+.dashboard-header h2 {
+    font-size: 1.5rem;
+    color: var(--text-color);
+}
+
+.dashboard-filters {
+    display: flex;
+    gap: 1rem;
+    align-items: flex-end;
+}
+
+.dashboard-filters .filter-group {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+}
+
+.dashboard-filters label {
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--text-light);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.dashboard-filters select {
+    padding: 0.5rem 1rem;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius);
+    font-family: inherit;
+    font-size: 0.9rem;
+    background: white;
+    min-width: 140px;
+    cursor: pointer;
+}
+
+.dashboard-filters select:focus {
+    outline: none;
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 3px rgba(60, 65, 205, 0.1);
+}
+
+/* Stat Cards Enhanced */
+.stat-card {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 1.5rem;
+    background: var(--card-bg);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.stat-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.12);
+}
+
+.stat-icon {
+    font-size: 2.5rem;
+    width: 60px;
+    height: 60px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(60, 65, 205, 0.1);
+    border-radius: var(--radius);
+}
+
+.stat-content {
+    flex: 1;
+    text-align: left;
+}
+
+.stat-content h3 {
+    font-size: 0.85rem;
+    color: var(--text-light);
+    margin-bottom: 0.25rem;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.stat-number {
+    font-size: 1.8rem;
+    font-weight: 700;
+    color: var(--primary-color);
+    margin: 0;
+    line-height: 1.2;
+}
+
+.stat-label {
+    font-size: 0.75rem;
+    color: var(--text-light);
+}
+
+.stat-trend {
+    display: inline-block;
+    margin-top: 0.3rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+}
+
+.stat-trend .trend-up {
+    color: var(--secondary-color);
+}
+
+.stat-trend .trend-down {
+    color: var(--danger-color);
+}
+
+.stat-trend .trend-neutral {
+    color: var(--text-light);
+}
+
+/* Charts Grid */
+.dashboard-charts {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+    gap: 1.5rem;
+    margin-bottom: 1.5rem;
+}
+
+.dashboard-charts-row2 {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(500px, 1fr));
+    gap: 1.5rem;
+    margin-bottom: 1.5rem;
+}
+
+.chart-card {
+    background: var(--card-bg);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    padding: 1.5rem;
+}
+
+.chart-card.wide {
+    grid-column: 1 / -1;
+    max-width: 100%;
+}
+
+.chart-card h3 {
+    font-size: 1rem;
+    color: var(--text-color);
+    margin-bottom: 1rem;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.chart-card canvas {
+    max-height: 250px;
+}
+
+/* Responsive adjustments for dashboard */
+@media (max-width: 1024px) {
+    .dashboard-charts {
+        grid-template-columns: 1fr;
+    }
+    
+    .dashboard-charts-row2 {
+        grid-template-columns: 1fr;
+    }
+    
+    .chart-card.wide {
+        grid-column: auto;
+    }
+}
+
+@media (max-width: 768px) {
+    .dashboard-header {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+    
+    .dashboard-filters {
+        width: 100%;
+    }
+    
+    .dashboard-filters .filter-group {
+        flex: 1;
+        min-width: 140px;
+    }
+    
+    .stat-card {
+        flex-direction: column;
+        text-align: center;
+        gap: 0.75rem;
+    }
+    
+    .stat-content {
+        text-align: center;
+    }
+    
+    .stat-icon {
+        width: 50px;
+        height: 50px;
+        font-size: 2rem;
+    }
+    
+    .stat-number {
+        font-size: 1.5rem;
+    }
+}

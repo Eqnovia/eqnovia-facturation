@@ -19,8 +19,16 @@ const Commandes = {
 
     afficher() {
         const items = this.getAll();
+        Utils.populateDateFilter('filter-commandes-month', 'filter-commandes-year');
         const filter = (document.getElementById('filter-commandes')?.value || '').toLowerCase();
-        const filtered = items.filter(d => (d.reference || '').toLowerCase().includes(filter) || (d.clientNom || '').toLowerCase().includes(filter) || (d.fournisseurNom || '').toLowerCase().includes(filter));
+        const filterYear = document.getElementById('filter-commandes-year')?.value || '';
+        const filterMonth = document.getElementById('filter-commandes-month')?.value || '';
+        const filtered = items.filter(d =>
+            ((d.reference || '').toLowerCase().includes(filter) ||
+                (d.clientNom || '').toLowerCase().includes(filter) ||
+                (d.fournisseurNom || '').toLowerCase().includes(filter)) &&
+            Utils.filterByDate(d, filterYear, filterMonth)
+        );
 
         const container = document.getElementById('commandes-list');
         if (filtered.length === 0) {

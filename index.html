@@ -4,12 +4,13 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Eqnovia - Gestion de Facturation</title>
-    <link rel="stylesheet" href="css/styles.css?v=20260910a">
+    <link rel="stylesheet" href="css/styles.css?v=20260911b">
     <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <script src="lib/jspdf.umd.min.js"></script>
     <script src="lib/jspdf.plugin.autotable.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
     <!-- SDK Supabase pour la synchronisation en ligne -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.4"></script>
 </head>
@@ -100,29 +101,77 @@
 
     <!-- Main Content -->
     <main class="main-content">
-        <!-- Dashboard Section -->
+<!-- Dashboard Section -->
         <section id="dashboard" class="section active">
-            <h2>Tableau de bord</h2>
+            <div class="dashboard-header">
+                <h2>Tableau de bord</h2>
+                <div class="dashboard-filters">
+                    <div class="filter-group">
+                        <label for="dashboard-month">Mois</label>
+                        <select id="dashboard-month" onchange="App.afficherTableauBord()"></select>
+                    </div>
+                    <div class="filter-group">
+                        <label for="dashboard-year">Année</label>
+                        <select id="dashboard-year" onchange="App.afficherTableauBord()"></select>
+                    </div>
+                </div>
+            </div>
             <div class="dashboard-stats">
                 <div class="stat-card">
-                    <h3>Factures</h3>
-                    <p class="stat-number" id="stat-factures">0</p>
-                    <span class="stat-label">Ce mois</span>
+                    <div class="stat-icon">📄</div>
+                    <div class="stat-content">
+                        <h3>Factures</h3>
+                        <p class="stat-number" id="stat-factures">0</p>
+                        <span class="stat-label" id="stat-factures-label">Ce mois</span>
+                        <span class="stat-trend" id="stat-factures-trend"></span>
+                    </div>
                 </div>
                 <div class="stat-card">
-                    <h3>Devis</h3>
-                    <p class="stat-number" id="stat-devis">0</p>
-                    <span class="stat-label">En attente</span>
+                    <div class="stat-icon">📋</div>
+                    <div class="stat-content">
+                        <h3>Devis</h3>
+                        <p class="stat-number" id="stat-devis">0</p>
+                        <span class="stat-label" id="stat-devis-label">En attente</span>
+                        <span class="stat-trend" id="stat-devis-trend"></span>
+                    </div>
                 </div>
                 <div class="stat-card">
-                    <h3>Chiffre d'affaires</h3>
-                    <p class="stat-number" id="stat-ca">0 Dhs</p>
-                    <span class="stat-label">Ce mois</span>
+                    <div class="stat-icon">💰</div>
+                    <div class="stat-content">
+                        <h3>Chiffre d'affaires</h3>
+                        <p class="stat-number" id="stat-ca">0 Dhs</p>
+                        <span class="stat-label" id="stat-ca-label">Ce mois</span>
+                        <span class="stat-trend" id="stat-ca-trend"></span>
+                    </div>
                 </div>
                 <div class="stat-card">
-                    <h3>Impayées</h3>
-                    <p class="stat-number" id="stat-impayees">0</p>
-                    <span class="stat-label">Factures</span>
+                    <div class="stat-icon">⚠️</div>
+                    <div class="stat-content">
+                        <h3>Impayées</h3>
+                        <p class="stat-number" id="stat-impayees">0</p>
+                        <span class="stat-label" id="stat-impayees-label">Factures</span>
+                        <span class="stat-trend" id="stat-impayees-trend"></span>
+                    </div>
+                </div>
+            </div>
+            <div class="dashboard-charts">
+                <div class="chart-card">
+                    <h3>📈 Évolution du CA (6 derniers mois)</h3>
+                    <canvas id="chart-ca-evolution" height="200"></canvas>
+                </div>
+                <div class="chart-card">
+                    <h3>📊 Répartition par statut</h3>
+                    <canvas id="chart-statuts" height="200"></canvas>
+                </div>
+            </div>
+            <div class="dashboard-charts-row2">
+                <div class="chart-card wide">
+                    <h3>📅 Factures par mois (année sélectionnée)</h3>
+                    <canvas id="chart-factures-mensuel" height="200"></canvas>
+                </div>
+                <div class="chart-card wide">
+                    <h3>👥 Top 5 Clients par CA</h3>
+                    <canvas id="chart-top-clients" height="200"></canvas>
                 </div>
             </div>
             <div class="recent-activity">
@@ -151,7 +200,7 @@
                         <input type="checkbox" id="dl-pdf-proforma" checked> 📑 Pro Forma
                     </label>
                 </div>
-                <button class="btn btn-download" onclick="MonthlyDownload.telechargerZIP()" style="margin-top:1rem;">
+                <button class="btn btn-download" onclick="MonthlyDownload.showModal()" style="margin-top:1rem;">
                     📥 Télécharger tout en PDF (ZIP)
                 </button>
             </div>
@@ -173,6 +222,8 @@
                     <option value="Partiellement payée">Partiellement payée</option>
                     <option value="Impayée">Impayée</option>
                 </select>
+                <select id="filter-factures-month" onchange="Factures.filtrer()"></select>
+                <select id="filter-factures-year" onchange="Factures.filtrer()"></select>
             </div>
             <div id="factures-list" class="data-list"></div>
         </section>
@@ -187,6 +238,8 @@
             </div>
             <div class="filters">
                 <input type="text" id="filter-devis" placeholder="Rechercher..." onkeyup="Devis.filtrer()">
+                <select id="filter-devis-month" onchange="Devis.filtrer()"></select>
+                <select id="filter-devis-year" onchange="Devis.filtrer()"></select>
             </div>
             <div id="devis-list" class="data-list"></div>
         </section>
@@ -201,6 +254,8 @@
             </div>
             <div class="filters">
                 <input type="text" id="filter-commandes" placeholder="Rechercher..." onkeyup="Commandes.filtrer()">
+                <select id="filter-commandes-month" onchange="Commandes.filtrer()"></select>
+                <select id="filter-commandes-year" onchange="Commandes.filtrer()"></select>
             </div>
             <div id="commandes-list" class="data-list"></div>
         </section>
@@ -215,6 +270,8 @@
             </div>
             <div class="filters">
                 <input type="text" id="filter-livraisons" placeholder="Rechercher..." onkeyup="Livraisons.filtrer()">
+                <select id="filter-livraisons-month" onchange="Livraisons.filtrer()"></select>
+                <select id="filter-livraisons-year" onchange="Livraisons.filtrer()"></select>
             </div>
             <div id="livraisons-list" class="data-list"></div>
         </section>
@@ -229,6 +286,8 @@
             </div>
             <div class="filters">
                 <input type="text" id="filter-proforma" placeholder="Rechercher..." onkeyup="ProForma.filtrer()">
+                <select id="filter-proforma-month" onchange="ProForma.filtrer()"></select>
+                <select id="filter-proforma-year" onchange="ProForma.filtrer()"></select>
             </div>
             <div id="proforma-list" class="data-list"></div>
         </section>

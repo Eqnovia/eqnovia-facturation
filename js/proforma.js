@@ -19,8 +19,14 @@ const ProForma = {
 
     afficher() {
         const items = this.getAll();
+        Utils.populateDateFilter('filter-proforma-month', 'filter-proforma-year');
         const filter = (document.getElementById('filter-proforma')?.value || '').toLowerCase();
-        const filtered = items.filter(d => (d.reference || '').toLowerCase().includes(filter) || (d.clientNom || '').toLowerCase().includes(filter));
+        const filterYear = document.getElementById('filter-proforma-year')?.value || '';
+        const filterMonth = document.getElementById('filter-proforma-month')?.value || '';
+        const filtered = items.filter(d =>
+            ((d.reference || '').toLowerCase().includes(filter) || (d.clientNom || '').toLowerCase().includes(filter)) &&
+            Utils.filterByDate(d, filterYear, filterMonth)
+        );
 
         const container = document.getElementById('proforma-list');
         if (filtered.length === 0) {
