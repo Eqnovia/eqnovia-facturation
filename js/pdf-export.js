@@ -777,36 +777,375 @@ const PdfExport = {
     },
 
     /**
-     * Export data to Excel using SheetJS
+     * Export data to Excel — mise en page assortie au PDF :
+     * bandeau titre bleu #4472C4, en-tête de tableau gris #BFBFBF, lignes séparées
+     * par des filets #D9D9D9, totaux gris clair/foncé, remarque avec *.
+     * Construit le XLSX avec JSZip (le SheetJS communautaire ne gère pas les styles).
+     * Repli : export brut SheetJS si JSZip est indisponible.
      */
     async exportToExcel(data, filename) {
         if (typeof XLSX === 'undefined') {
             Toast.error('La bibliothèque Excel (SheetJS) n\'est pas chargée.');
             return;
         }
-
-        const wb = XLSX.utils.book_new();
-        const ws = XLSX.utils.json_to_sheet(data);
-        XLSX.utils.book_append_sheet(wb, ws, 'Données');
-        
-        // Auto-fit column widths
-        const colWidths = Object.keys(data[0] || {}).map(key => ({
-            wch: Math.max(key.length, ...data.map(row => String(row[key] || '').length))
-        }));
-        ws['!cols'] = colWidths;
-
-        const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'binary' });
-        
-        function s2ab(s) {
-            const buf = new ArrayBuffer(s.length);
-            const view = new Uint8Array(buf);
-            for (let i = 0; i < s.length; i++) view[i] = s.charCodeAt(i) & 0xFF;
-            return buf;
+        if (typeof JSZip === 'undefined') {
+            // Repli : ancien export sans style
+            return this.exportToExcelPlain(data, filename);
         }
 
-        const blob = new Blob([s2ab(wbout)], { type: 'application/octet-stream' });
-        
-        // Trigger browser download IMMEDIATELY
+        const zip = new JSZip();
+        const company = this.getCompany();
+
+        // Type de document + libellé de date, déduits du nom de fichier
+        let docType = 'DOCUMENT', dateLabel = 'Date :';
+        if (filename) {
+            if (filename.startsWith('Facture_')) { docType = 'FACTURE'; dateLabel = 'Date de facturation :'; }
+            else if (filename.startsWith('Devis_')) { docType = 'DEVIS'; dateLabel = 'Date du devis :'; }
+            else if (filename.startsWith('Commande_')) { docType = 'BON DE COMMANDE'; dateLabel = 'Date de commande :'; }
+            else if (filename.startsWith('BL_')) { docType = 'BON DE LIVRAISON'; dateLabel = 'Date de livraison :'; }
+            else if (filename.startsWith('ProForma_')) { docType = 'FACTURE PRO FORMA'; dateLabel = 'Date de facturation :'; }
+        }
+
+        // Séparer les colonnes "méta" (reproduites dans le haut de page comme le PDF)
+        // des colonnes du tableau
+        const meta = this._excelMeta || {};
+        const metaKeys = ['Référence', 'Client', 'Fournisseur', 'ICE', 'Adresse', 'Ville', 'Date', 'Date de livraison'];
+        const allCols = Object.keys(data[0] || {});
+        const tableCols = allCols.filter(c => !metaKeys.includes(c));
+        const cols = tableCols.length ? tableCols : allCols;
+        if (!cols.length || !data.length) { Toast.error('Aucune donnée à exporter.'); return; }
+        const first = data[0] || {};
+        const ref = first['Référence'] || '';
+        const client = first['Client'] || first['Fournisseur'] || '';
+        const clientAddr = first['Adresse'] || meta.adresse || '';
+        const clientVille = first['Ville'] || meta.ville || '';
+        const clientIce = first['ICE'] || meta.ice || '';
+        const docDate = first['Date'] || '';
+
+        const n = cols.length;
+        const isNumCol = cols.map(c => data.some(r => typeof r[c] === 'number'));
+        const moneyCol = cols.map((c, i) => /Prix|Total|HT|Montant/i.test(c) && isNumCol[i]);
+        // Largeurs proportionnelles au PDF (indépendantes du contenu, comme une vraie mise en page)
+        const colW = cols.map((c, i) => {
+            if (i === 0 || /désignation|designation|libellé|libelle|description/i.test(c)) return 60;
+            if (/quantité|quantite|qté|qte/i.test(c)) return 9;
+            if (/unité|unite/i.test(c)) return 6.5;
+            if (/tva/i.test(c)) return 7.5;
+            if (/référence|reference/i.test(c)) return 14;
+            if (moneyCol[i]) return 15.5;
+            return 13;
+        });
+        const colName = i => { let s = ''; i += 1; while (i > 0) { const m = (i - 1) % 26; s = String.fromCharCode(65 + m) + s; i = Math.floor((i - 1) / 26); } return s; };
+
+        // ---- Palette et styles (identiques au PDF) ----
+        const BLUE = '4472C4', HEAD = 'BFBFBF', PANEL = 'F2F2F2', TTCF = 'D9D9D9', BORDER = 'A6A6A6', HAIR = 'D9D9D9', GREY = '4D4D4D';
+        const F = {
+            title: { sz: 20, b: true, color: { rgb: BLUE } },
+            name: { sz: 9, b: true, color: { rgb: '000000' } },
+            body: { sz: 9, color: { rgb: '000000' } },
+            grey: { sz: 9, color: { rgb: GREY } },
+            label: { sz: 9, b: true, color: { rgb: '000000' } },
+            italicR: { sz: 9, i: true, color: { rgb: '000000' } },
+            note: { sz: 8.5, i: true, color: { rgb: '646464' } },
+            foot: { sz: 8, b: true, color: { rgb: '000000' } }
+        };
+        const fillOf = rgb => ({ patternType: 'solid', fgColor: { rgb } });
+        const thin = { style: 'thin', color: { rgb: BORDER } };
+        const hair = { style: 'hair', color: { rgb: HAIR } };
+        const greyThin = { style: 'thin', color: { rgb: HEAD } };
+        const rowBorder = { bottom: hair };   // filets horizontaux uniquement (pas de bordures verticales, comme le PDF)
+
+        const cell = (v, s = {}, extra = {}) => ({ v, s, ...extra });
+        const merges = [];
+        const rowHts = {};
+        const rows = [];
+        const push = (cells) => {
+            const row = [];
+            for (let i = 0; i < n; i++) row.push(cells && cells[i] !== undefined ? cells[i] : null);
+            rows.push(row);
+            return rows.length - 1;
+        };
+        const mergeRow = (r, c1, c2) => { if (c2 > c1) merges.push({ s: { r, c: c1 }, e: { r, c: c2 } }); };
+        const spacer = () => push({ 0: cell(null) });
+
+        // ===== 1. TITRE bleu en haut à droite (le logo flotte à gauche) =====
+        const rTitle = push({ [n - 1]: cell(docType, { font: F.title, alignment: { horizontal: 'right', vertical: 'center' } }) });
+        mergeRow(rTitle, 0, n - 1);
+        rowHts[rTitle] = 30;
+        spacer();
+
+        // ===== 2. PANNEAU SOCIÉTÉ (gris clair, gauche) + ENCADRÉ CLIENT (bordure fine, droite) =====
+        // Une colonne vide entre les deux zones, comme l'espace blanc du PDF (~79 mm / ~61 mm)
+        const gap = 1;
+        const leftSpan = Math.max(1, Math.ceil((n - gap) / 2));
+        const rightStart = leftSpan + gap;
+        const cliBorder = i => ({
+            left: thin, right: thin,
+            top: i === 0 ? thin : undefined,
+            bottom: i === comp.length - 1 ? thin : undefined
+        });
+        const comp = [
+            [company.nom || 'Eqnovia', true],
+            [company.adresse || '', false],
+            [company.ville || '', false],
+            [company.website || '', false]
+        ];
+        const cli = [
+            [client || '', true],
+            [clientAddr, false],
+            [clientVille, false],
+            [`ICE : ${clientIce || '-'}`, false]
+        ];
+        comp.forEach((cRow, i) => {
+            const cells = [];
+            for (let c = 0; c < n; c++) cells.push(null);
+            for (let c = 0; c < leftSpan; c++) cells[c] = cell(null, { fill: fillOf(PANEL), alignment: { vertical: 'center' } });
+            for (let c = rightStart; c < n; c++) cells[c] = cell(null, { border: cliBorder(i), alignment: { vertical: 'center' } });
+            cells[0] = cell(cRow[0], { font: cRow[1] ? F.name : F.body, fill: fillOf(PANEL), alignment: { vertical: 'center', wrapText: true } });
+            cells[rightStart] = cell(cli[i][0], { font: cli[i][1] ? F.name : F.body, border: cliBorder(i), alignment: { vertical: 'center', wrapText: true } });
+            const r = push(cells);
+            mergeRow(r, 0, leftSpan - 1);
+            mergeRow(r, rightStart, n - 1);
+            rowHts[r] = 15;
+        });
+        spacer();
+
+        // ===== 3. DATES / RÉFÉRENCE (libellés gras, valeurs en dessous — comme le PDF) =====
+        if (docType === 'DEVIS') {
+            const third = Math.max(1, Math.floor(n / 3));
+            const labs = [
+                ['Date du devis :', docDate || '', 0],
+                ['Date de fin de validité :', meta.dateValidite || '', Math.min(third, n - 2)],
+                ['Référence :', ref, n - 2]
+            ];
+            const rLab = push(labs.reduce((acc, [t, , c]) => (acc[c] = cell(t, { font: F.label }), acc), {}));
+            const rVal = push(labs.reduce((acc, [, v, c]) => (acc[c] = cell(v, { font: F.body }), acc), {}));
+            rowHts[rLab] = 14; rowHts[rVal] = 14;
+        } else {
+            push({ 0: cell(dateLabel, { font: F.label }), [n - 2]: cell('Référence :', { font: F.label }) });
+            push({ 0: cell(docDate, { font: F.body }), [n - 2]: cell(ref, { font: F.body }) });
+        }
+        if (docType === 'BON DE COMMANDE' && meta.dateLivraison) {
+            push({ 0: cell(`Date de livraison : ${meta.dateLivraison}`, { font: F.body }) });
+        }
+        spacer();
+
+        // ===== 4. OBJET (libellé gras + texte fusionné) =====
+        if (meta.objet) {
+            push({ 0: cell('Objet', { font: F.label }), 1: cell(` : ${meta.objet}`, { font: F.body, alignment: { wrapText: true, vertical: 'top' } }) });
+            const rO = rows.length - 1;
+            mergeRow(rO, 1, n - 1);
+            rowHts[rO] = 24;
+            spacer();
+        }
+
+        // ===== 5. MENTION MONTANTS (italique, alignée à droite) =====
+        push({ [n - 1]: cell('Montants exprimés en Dhs', { font: F.italicR, alignment: { horizontal: 'right' } }) });
+        mergeRow(rows.length - 1, Math.floor(n / 2), n - 1);
+
+        // ===== 6. TABLEAU : bande d'en-tête grise (contour seulement, pas de colonnes séparées) + lignes à filets =====
+        push(cols.map((c, i) => cell(c, {
+            font: F.name, fill: fillOf(HEAD), border: { top: thin, bottom: thin, left: i === 0 ? thin : undefined, right: i === n - 1 ? thin : undefined },
+            alignment: { horizontal: i === 0 ? 'left' : (moneyCol[i] ? 'right' : 'center'), vertical: 'center', wrapText: true }
+        })));
+        rowHts[rows.length - 1] = 21;   // hauteur de la bande à 2 lignes du PDF
+
+        const lastRow = data.length - 1;
+        data.forEach((r0, dIdx) => {
+            push(cols.map((c, i) => {
+                const v = r0[c];
+                const money = moneyCol[i];
+                const extra = (money || isNumCol[i]) ? { t: 'n', z: money ? '#,##0.00' : undefined } : {};
+                // Filet horizontal sous chaque ligne ; le bas de la dernière ligne fait partie du contour de la bande
+                const bd = { bottom: dIdx === lastRow ? thin : hair };
+                if (i === 0) bd.left = thin;
+                if (i === n - 1) bd.right = thin;
+                return cell(v ?? '', { font: F.grey, border: bd, alignment: { horizontal: i === 0 ? 'left' : (money ? 'right' : 'center'), vertical: 'center', wrapText: i === 0 } }, extra);
+            }));
+        });
+        spacer();
+
+        // ===== 7. TOTAUX à droite (HT gris clair / TVA blanc / TTC gris) + encadré bancaire (FACTURE) =====
+        const totHTIdx = cols.indexOf('Total HT');
+        if (totHTIdx !== -1) {
+            const totalHT = Math.round(data.reduce((s, r) => s + (r['Total HT'] || 0), 0) * 100) / 100;
+            const totalTVA = Math.round(data.reduce((s, r) => s + ((r['Total HT'] || 0) * (r['TVA %'] || 0) / 100), 0) * 100) / 100;
+            const totalTTC = Math.round((totalHT + totalTVA) * 100) / 100;
+            const lC = Math.max(0, n - 2), vC = n - 1;
+            const totHt = 13.5;   // rangées de totaux comme dans le PDF
+            const tRow = (label, value, fill) => {
+                const rr = push({
+                    [lC]: cell(label, { font: F.label, ...(fill ? { fill } : {}), alignment: { horizontal: 'left', vertical: 'center' } }),
+                    [vC]: cell(value, { font: F.label, ...(fill ? { fill } : {}), alignment: { horizontal: 'right', vertical: 'center' } }, { t: 'n', z: '#,##0.00' })
+                });
+                rowHts[rr] = totHt;
+            };
+            tRow('Total HT', totalHT, fillOf(PANEL));
+            tRow('Total TVA', totalTVA, null);
+            tRow('Total TTC', totalTTC, fillOf(TTCF));
+
+            if (docType === 'FACTURE') {
+                const bd = { banque: 'Crédit du Maroc', beneficiaire: company.nom || 'Eqnovia', rib: '021 780 0000 177030150208 49' };
+                const bankLines = [
+                    ['Coordonnées bancaires :', true],
+                    [`Banque : ${bd.banque}`, false],
+                    [`Bénéficiaire : ${bd.beneficiaire}`, false],
+                    [`RIB : ${bd.rib}`, false]
+                ];
+                const span = Math.min(leftSpan, n - 2);
+                // Bordures : uniquement le contour extérieur du bloc (une seule boîte, comme le PDF)
+                const putBank = (rr, [t, b], firstOfBlock, lastOfBlock) => {
+                    const edge = {
+                        top: firstOfBlock ? thin : undefined,
+                        bottom: lastOfBlock ? thin : undefined,
+                        left: thin, right: thin
+                    };
+                    for (let c = 0; c < span; c++) {
+                        rows[rr][c] = cell(c === 0 ? t : null, { font: b ? F.label : F.body, border: edge, alignment: { vertical: 'center' } });
+                    }
+                    mergeRow(rr, 0, span - 1);
+                };
+                // Les 3 premières lignes se superposent aux rangées de totaux
+                const rStart = rows.length - 3;
+                bankLines.slice(0, 3).forEach(([t, b], i) => {
+                    const rr = rStart + i;
+                    if (rr < 0 || rr >= rows.length) return;
+                    putBank(rr, [t, b], i === 0, false);
+                });
+                // RIB : rangée supplémentaire sous le bloc (comme la 4e ligne de l'encadré PDF)
+                const rRIB = push({});
+                putBank(rRIB, bankLines[3], false, true);
+            }
+        }
+
+        // ===== 8. REMARQUE avec * (comme sur le PDF) =====
+        const remarque = this.avecEtoile(this._excelRemarque || '');
+        if (remarque) {
+            spacer();
+            push({ 0: cell(remarque, { font: F.note, alignment: { wrapText: true, vertical: 'top' } }) });
+            mergeRow(rows.length - 1, 0, n - 1);
+            rowHts[rows.length - 1] = 26;
+        }
+
+        // ===== 9. PIED DE PAGE LÉGAL (filet gris + 2 lignes) =====
+        // Filet gris fin (2 pt) + 2 lignes légales — comme le séparateur du pied de page du PDF
+        spacer();
+        push(cols.map(() => cell(null, { border: { bottom: greyThin } })));
+        rowHts[rows.length - 1] = 4;
+        const foot1 = `${company.nom || 'Eqnovia'} S.A. - ${company.adresse || ''} ${company.ville || ''} - Capital : ${company.capital || '2 000 000 Dhs'}`;
+        const foot2 = `ICE : ${company.ice || ''} - RC : ${company.rc || ''} - IF : ${company.if || ''} - N° Taxe Professionnelle : ${company.tp || ''}`;
+        push({ 0: cell(foot1, { font: F.foot }) });
+        mergeRow(rows.length - 1, 0, n - 1);
+        push({ 0: cell(foot2, { font: F.foot }) });
+        mergeRow(rows.length - 1, 0, n - 1);
+
+        // ---- Registres de styles OOXML ----
+        const escXml = s => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+        const fonts = ['<font><sz val="10"/><color theme="1"/><name val="Calibri"/><family val="2"/></font>'];
+        const fills = ['<fill><patternFill patternType="none"/></fill>', '<fill><patternFill patternType="gray125"/></fill>'];
+        const borders = ['<border><left/><right/><top/><bottom/><diagonal/></border>'];
+        const xfs = [];
+        const reg = (arr, xml) => { let i = arr.indexOf(xml); if (i === -1) { arr.push(xml); i = arr.length - 1; } return i; };
+        const fontXml = f => {
+            let x = '<font>';
+            if (f.b) x += '<b/>';
+            if (f.i) x += '<i/>';
+            x += `<sz val="${f.sz || 10}"/>`;
+            if (f.color && f.color.rgb) x += `<color rgb="FF${f.color.rgb}"/>`;
+            x += '<name val="Calibri"/><family val="2"/></font>';
+            return x;
+        };
+        const fillXml = f => `<fill><patternFill patternType="${f.patternType}"><fgColor rgb="FF${f.fgColor.rgb}"/><bgColor indexed="64"/></patternFill></fill>`;
+        const sideXml = (s, name) => s ? `<${name} style="${s.style}"><color rgb="FF${s.color.rgb}"/></${name}>` : `<${name}/>`;
+        const borderXml = b => `<border>${sideXml(b.left, 'left')}${sideXml(b.right, 'right')}${sideXml(b.top, 'top')}${sideXml(b.bottom, 'bottom')}<diagonal/></border>`;
+        const alignXml = a => {
+            const p = [];
+            if (a.horizontal) p.push(`horizontal="${a.horizontal}"`);
+            if (a.vertical) p.push(`vertical="${a.vertical}"`);
+            if (a.wrapText) p.push('wrapText="1"');
+            return p.length ? `<alignment ${p.join(' ')}/>` : '';
+        };
+        const styleId = st => {
+            const fontId = st.font ? reg(fonts, fontXml(st.font)) : 0;
+            const fillId = st.fill ? reg(fills, fillXml(st.fill)) : 0;
+            const borderId = st.border ? reg(borders, borderXml(st.border)) : 0;
+            const aXml = st.alignment ? alignXml(st.alignment) : '';
+            const nf = st.z ? 4 : 0;   // #,##0.00 = format intégré n°4
+            const xf = `<xf numFmtId="${nf}" fontId="${fontId}" fillId="${fillId}" borderId="${borderId}" xfId="0"${nf ? ' applyNumberFormat="1"' : ''}${fontId ? ' applyFont="1"' : ''}${fillId ? ' applyFill="1"' : ''}${borderId ? ' applyBorder="1"' : ''}${aXml ? ' applyAlignment="1"' : ''}>${aXml}</xf>`;
+            return reg(xfs, xf);
+        };
+
+        // ---- sheetData ----
+        let rowXml = '';
+        rows.forEach((row, R) => {
+            const r = R + 1;
+            let cellsXml = '';
+            let hasAny = false;
+            row.forEach((c, C) => {
+                if (!c) return;
+                hasAny = true;
+                const addr = colName(C) + r;
+                const sid = styleId({ ...(c.s || {}), z: c.z });
+                if (c.v === null || c.v === undefined || c.v === '') {
+                    cellsXml += `<c r="${addr}" s="${sid}"/>`;
+                } else if (typeof c.v === 'number' && isFinite(c.v)) {
+                    cellsXml += `<c r="${addr}" s="${sid}"><v>${c.v}</v></c>`;
+                } else {
+                    cellsXml += `<c r="${addr}" s="${sid}" t="inlineStr"><is><t xml:space="preserve">${escXml(c.v)}</t></is></c>`;
+                }
+            });
+            if (hasAny) {
+                const h = rowHts[R];
+                rowXml += `<row r="${r}"${h ? ` ht="${h}" customHeight="1"` : ''}>${cellsXml}</row>`;
+            }
+        });
+
+        const colsXml = colW.map((w, i) => `<col min="${i + 1}" max="${i + 1}" width="${w}" customWidth="1"/>`).join('');
+        const mergesXml = merges.length ? `<mergeCells count="${merges.length}">${merges.map(m => `<mergeCell ref="${colName(m.s.c)}${m.s.r + 1}:${colName(m.e.c)}${m.e.r + 1}"/>`).join('')}</mergeCells>` : '';
+
+        // ---- Logo (haut gauche, comme dans le PDF) ----
+        let extraTypes = '', drawingRef = '';
+        try {
+            const b64 = (this.getLogoBase64() || '').split(',').pop();
+            if (b64 && b64.length > 50) {
+                const bin = atob(b64);
+                const png = new Uint8Array(bin.length);
+                for (let i = 0; i < bin.length; i++) png[i] = bin.charCodeAt(i);
+                zip.file('xl/media/image1.png', png);
+                zip.file('xl/drawings/drawing1.xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><xdr:wsDr xmlns:xdr="http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><xdr:oneCellAnchor><xdr:from><xdr:col>0</xdr:col><xdr:colOff>38100</xdr:colOff><xdr:row>0</xdr:row><xdr:rowOff>19050</xdr:rowOff></xdr:from><xdr:ext cx="1619250" cy="495300"/><xdr:pic><xdr:nvPicPr><xdr:cNvPr id="1" name="Logo"/><xdr:cNvPicPr><a:picLocks noChangeAspect="1"/></xdr:cNvPicPr></xdr:nvPicPr><xdr:blipFill><a:blip r:embed="rId1"/><a:stretch><a:fillRect/></a:stretch></xdr:blipFill><xdr:spPr><a:xfrm><a:off x="38100" y="19050"/><a:ext cx="1619250" cy="495300"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></xdr:spPr></xdr:pic><xdr:clientData/></xdr:oneCellAnchor></xdr:wsDr>`);
+                zip.file('xl/drawings/_rels/drawing1.xml.rels', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="../media/image1.png"/></Relationships>`);
+                zip.file('xl/worksheets/_rels/sheet1.xml.rels', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/drawing" Target="../drawings/drawing1.xml"/></Relationships>`);
+                extraTypes = '<Default Extension="png" ContentType="image/png"/><Override PartName="/xl/drawings/drawing1.xml" ContentType="application/vnd.openxmlformats-officedocument.drawing+xml"/>';
+                drawingRef = '<drawing r:id="rId1"/>';
+            }
+        } catch (e) {}
+
+        const sheetXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheetPr><pageSetUpPr fitToPage="1"/></sheetPr><sheetViews><sheetView showGridLines="0" workbookViewId="0"><pane ySplit="0" topLeftCell="A1" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews><sheetFormatPr defaultRowHeight="15"/><cols>${colsXml}</cols><sheetData>${rowXml}</sheetData>${mergesXml}<printOptions horizontalCentered="1"/><pageMargins left="0.4" right="0.4" top="0.5" bottom="0.5" header="0.3" footer="0.3"/><pageSetup paperSize="9" orientation="portrait" fitToWidth="1" fitToHeight="0"/>${drawingRef}</worksheet>`;
+
+        const stylesXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><fonts count="${fonts.length}">${fonts.join('')}</fonts><fills count="${fills.length}">${fills.join('')}</fills><borders count="${borders.length}">${borders.join('')}</borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="${xfs.length}">${xfs.join('')}</cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>`;
+
+        const wbXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="Document" sheetId="1" r:id="rId1"/></sheets></workbook>`;
+
+        const wbRels = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>`;
+
+        const contentTypes = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/>${extraTypes}<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/></Types>`;
+
+        zip.file('[Content_Types].xml', contentTypes);
+        zip.file('_rels/.rels', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>`);
+        zip.file('xl/workbook.xml', wbXml);
+        zip.file('xl/_rels/workbook.xml.rels', wbRels);
+        zip.file('xl/styles.xml', stylesXml);
+        zip.file('xl/worksheets/sheet1.xml', sheetXml);
+
+        const xlsxData = await zip.generateAsync({ type: 'uint8array' });
+        const blob = new Blob([xlsxData], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+
+        // Téléchargement immédiat dans le navigateur
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
@@ -815,21 +1154,47 @@ const PdfExport = {
         a.click();
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
-        
-        // Then save a copy to the local folder in the background
-        let docType = null;
-        if (filename) {
-            if (filename.startsWith('Facture_')) docType = 'FACTURE';
-            else if (filename.startsWith('Devis_')) docType = 'DEVIS';
-            else if (filename.startsWith('Commande_')) docType = 'BON DE COMMANDE';
-            else if (filename.startsWith('BL_')) docType = 'BON DE LIVRAISON';
-            else if (filename.startsWith('ProForma_')) docType = 'FACTURE PRO FORMA';
-        }
+
+        // Copie dans le dossier local en arrière-plan
         if (docType && FileStorage.isReady()) {
             FileStorage.saveFile(blob, docType, filename).then(saved => {
                 if (saved) console.log(`Excel sauvegardé dans ${docType}`);
             }).catch(e => console.warn('Sauvegarde locale échouée:', e));
         }
+        return blob;
+    },
+
+    /**
+     * Ancien export Excel brut (repli si JSZip indisponible)
+     */
+    exportToExcelPlain(data, filename) {
+        const wb = XLSX.utils.book_new();
+        const ws = XLSX.utils.json_to_sheet(data);
+        XLSX.utils.book_append_sheet(wb, ws, 'Données');
+        const colWidths = Object.keys(data[0] || {}).map(key => ({
+            wch: Math.max(key.length, ...data.map(row => String(row[key] || '').length))
+        }));
+        ws['!cols'] = colWidths;
+        const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'binary' });
+        const blob = new Blob([this.s2ab(wbout)], { type: 'application/octet-stream' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename || 'export.xlsx';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    },
+
+    /**
+     * ArrayBuffer <- chaîne binaire
+     */
+    s2ab(s) {
+        const buf = new ArrayBuffer(s.length);
+        const view = new Uint8Array(buf);
+        for (let i = 0; i < s.length; i++) view[i] = s.charCodeAt(i) & 0xFF;
+        return buf;
     },
 
     /**

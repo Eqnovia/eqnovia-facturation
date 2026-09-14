@@ -256,6 +256,8 @@ const Commandes = {
         const doc = this.getById(id);
         if (!doc) return Toast.error('Commande introuvable');
         const data = doc.lignes.map(l => ({ 'Désignation': l.designation, 'Quantité': l.quantite, 'Unité': l.unite, 'Prix unitaire HT': l.prixUnitaire, 'TVA %': l.tva, 'Total HT': (l.quantite||0)*(l.prixUnitaire||0), 'Référence': doc.reference, 'Fournisseur': doc.fournisseurNom || doc.clientNom, 'Date': Utils.formatDate(doc.date), 'Date de livraison': doc.dateLivraison ? Utils.formatDate(doc.dateLivraison) : '' }));
+        PdfExport._excelRemarque = doc.remarques || '';
+        PdfExport._excelMeta = { objet: doc.objet || '', dateLivraison: doc.dateLivraison ? Utils.formatDate(doc.dateLivraison) : '', adresse: doc.clientAdresse || doc.fournisseurAdresse || '', ville: doc.clientVille || doc.fournisseurVille || '', ice: doc.clientIce || doc.fournisseurIce || '' };
         PdfExport.exportToExcel(data, `Commande_${doc.reference}.xlsx`);
         Toast.success('Excel téléchargé avec succès');
     }

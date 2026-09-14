@@ -219,8 +219,10 @@ const ProForma = {
 
     exportExcel(id) {
         const doc = this.getById(id);
-        if (!doc) return Toast.error('Pro forma introuvable');
-        const data = doc.lignes.map(l => ({ 'Désignation': l.designation, 'Quantité': l.quantite, 'Unité': l.unite, 'Prix unitaire HT': l.prixUnitaire, 'TVA %': l.tva, 'Total HT': (l.quantite||0)*(l.prixUnitaire||0), 'Référence': doc.reference, 'Client': doc.clientNom, 'Date': Utils.formatDate(doc.date) }));
+        if (!doc) return Toast.error('Pro forma introuvable');        const data = doc.lignes.map(l => ({ 'Désignation': l.designation, 'Quantité': l.quantite, 'Unité': l.unite, 'Prix unitaire HT': l.prixUnitaire, 'TVA %': l.tva, 'Total HT': (l.quantite||0)*(l.prixUnitaire||0), 'Référence': doc.reference, 'Client': doc.clientNom, 'Date': Utils.formatDate(doc.date) }));
+        PdfExport._excelRemarque = doc.remarques || '';
+        PdfExport._excelMeta = { objet: doc.objet || '', adresse: doc.clientAdresse || '', ville: doc.clientVille || '', ice: doc.clientIce || '' };
+
         PdfExport.exportToExcel(data, `ProForma_${doc.reference}.xlsx`);
         Toast.success('Excel téléchargé avec succès');
     },

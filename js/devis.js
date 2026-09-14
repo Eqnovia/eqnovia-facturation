@@ -369,6 +369,8 @@ const Devis = {
         const doc = this.getById(id);
         if (!doc) return Toast.error('Devis introuvable');
         const data = doc.lignes.map(l => ({ 'Désignation': l.designation, 'Quantité': l.quantite, 'Unité': l.unite, 'Prix unitaire HT': l.prixUnitaire, 'TVA %': l.tva, 'Total HT': (l.quantite||0)*(l.prixUnitaire||0), 'Référence': doc.reference, 'Client': doc.clientNom, 'Date': Utils.formatDate(doc.date) }));
+        PdfExport._excelRemarque = doc.remarques || '';
+        PdfExport._excelMeta = { objet: doc.objet || '', dateValidite: doc.dateValidite ? Utils.formatDate(doc.dateValidite) : '', adresse: doc.clientAdresse || '', ville: doc.clientVille || '', ice: doc.clientIce || '' };
         PdfExport.exportToExcel(data, `Devis_${doc.reference}.xlsx`);
         Toast.success('Excel téléchargé avec succès');
     },

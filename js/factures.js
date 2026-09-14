@@ -836,6 +836,8 @@ const Factures = {
             'Date': Utils.formatDate(doc.date)
         }));
 
+        PdfExport._excelRemarque = doc.remarques || '';
+        PdfExport._excelMeta = { objet: doc.objet || '', adresse: doc.clientAdresse || '', ville: doc.clientVille || '', ice: doc.clientIce || '' };
         PdfExport.exportToExcel(data, `Facture_${doc.reference}.xlsx`);
         Toast.success('Excel téléchargé avec succès');
     }

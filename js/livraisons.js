@@ -192,6 +192,8 @@ const Livraisons = {
         const doc = this.getById(id);
         if (!doc) return Toast.error('Bon de livraison introuvable');
         const data = doc.lignes.map(l => ({ 'Désignation': l.designation, 'Quantité': l.quantite, 'Unité': l.unite, 'Référence': doc.reference, 'Client': doc.clientNom, 'Date': Utils.formatDate(doc.date) }));
+        PdfExport._excelRemarque = doc.remarques || '';
+        PdfExport._excelMeta = { objet: doc.objet || '', adresse: doc.clientAdresse || '', ville: doc.clientVille || '', ice: doc.clientIce || '' };
         PdfExport.exportToExcel(data, `BL_${doc.reference}.xlsx`);
         Toast.success('Excel téléchargé avec succès');
     }
