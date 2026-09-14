@@ -95,94 +95,87 @@ const Devis = {
 
         Modal.ouvrir(`Devis ${d.reference}`, `
             <div class="document-preview devis-layout">
-                <!-- HEADER: Company info left, Contact person right -->
+                <!-- EN-TÊTE: société sur fond bleu marine -->
                 <div class="devis-header">
-                    <div class="devis-header-left">
-                        <p><strong>${company.nom}</strong></p>
+                    <div class="devis-header-company">
+                        <p class="devis-company-name">${company.nom}</p>
                         <p>${company.adresse}</p>
                         <p>${company.ville}</p>
                         <p>${company.website}</p>
                     </div>
-                    <div class="devis-header-right">
-                        <h1 class="devis-title">DEVIS</h1>
-                        <div class="devis-client-info">
-                            <p><strong>${Utils.escapeHtml(d.clientNom || '')}</strong></p>
-                            <p>${Utils.escapeHtml(d.clientAdresse || '')}</p>
-                            ${d.clientIce ? `<p>ICE: ${Utils.escapeHtml(d.clientIce)}</p>` : ''}
-                        </div>
-                        <span class="status-badge ${this.getStatutClass(d.statut)}">${d.statut || 'En attente'}</span>
-                    </div>
                 </div>
 
-                <!-- DATE BAR -->
-                <div class="devis-date-bar">
-                    <div class="devis-date-item">
-                        <span class="devis-date-label">Date du devis :</span>
-                        <span class="devis-date-value">${Utils.formatDate(d.date)}</span>
+                <!-- TITRE -->
+                <h1 class="devis-title">DEVIS</h1>
+
+                <!-- CLIENT À GAUCHE / DATES & RÉFÉRENCE À DROITE -->
+                <div class="devis-subheader">
+                    <div class="devis-client-block">
+                        <p class="devis-client-name">${Utils.escapeHtml(d.clientNom || '')}</p>
+                        ${d.clientAdresse ? `<p>${Utils.escapeHtml(d.clientAdresse)}</p>` : ''}
+                        ${d.clientVille ? `<p>${Utils.escapeHtml(d.clientVille)}</p>` : ''}
                     </div>
-                    <div class="devis-date-item">
-                        <span class="devis-date-label">Date de fin de validité :</span>
-                        <span class="devis-date-value">${d.dateValidite ? Utils.formatDate(d.dateValidite) : '—'}</span>
-                    </div>
-                    <div class="devis-date-item">
-                        <span class="devis-date-label">Référence :</span>
-                        <span class="devis-date-value"><strong>${Utils.escapeHtml(d.reference || '')}</strong></span>
+                    <div class="devis-meta-block">
+                        <p><strong>Date du devis :</strong> ${Utils.formatDate(d.date)}</p>
+                        <p><strong>Date de fin de validité :</strong> ${d.dateValidite ? Utils.formatDate(d.dateValidite) : '—'}</p>
+                        <p><strong>Référence :</strong> ${Utils.escapeHtml(d.reference || '')}</p>
                     </div>
                 </div>
 
                 <!-- OBJET -->
-                ${d.objet ? `<div class="devis-objet"><span class="devis-date-label">Objet :</span> ${Utils.escapeHtml(d.objet)}</div>` : ''}
+                ${d.objet ? `<div class="devis-objet"><strong>Objet :</strong> ${Utils.escapeHtml(d.objet)}</div>` : ''}
 
-                <!-- MONTANTS -->
-                <p style="text-align:right;font-style:italic;color:var(--text-light);font-size:0.8rem;margin-bottom:0.5rem;">Montants exprimés en Dhs</p>
+                <!-- DEVISE -->
+                <p class="devis-currency">Montants exprimés en Dhs</p>
 
-                <!-- TABLE -->
-                <table class="lines-table devis-table">
-                    <thead>
-                        <tr>
-                            <th class="col-designation">Désignation</th>
-                            <th class="col-tva">% TVA</th>
-                            <th class="col-qty">Quantité</th>
-                            <th class="col-unit">Unité</th>
-                            <th class="col-price">Prix unitaire<br><span style="font-weight:normal;font-size:0.7rem;">HT</span></th>
-                            <th class="col-total">Prix total<br><span style="font-weight:normal;font-size:0.7rem;">HT</span></th>
-                        </tr>
-                    </thead>
-                    <tbody>${linesHtml}</tbody>
-                </table>
+                <!-- TABLEAU -->
+                <div class="devis-table-wrapper">
+                    <table class="devis-table">
+                        <thead>
+                            <tr>
+                                <th class="col-designation">Désignation</th>
+                                <th class="col-tva">% TVA</th>
+                                <th class="col-qty">Qté</th>
+                                <th class="col-unit">Unité</th>
+                                <th class="col-price">Prix unitaire HT</th>
+                                <th class="col-total">Prix total HT</th>
+                            </tr>
+                        </thead>
+                        <tbody>${linesHtml}</tbody>
+                    </table>
+                </div>
 
-                <!-- TOTALS -->
+                <!-- TOTAUX -->
                 <div class="devis-totals">
                     <table class="totals-table">
                         <tr><td class="label">Total HT</td><td class="value">${Utils.formatMoney(d.totalHT || 0)}</td></tr>
                         <tr><td class="label">Total TVA</td><td class="value">${Utils.formatMoney(d.totalTVA || 0)}</td></tr>
-                        <tr><td class="label">Total TTC</td><td class="value total-ttc">${Utils.formatMoney(d.totalTTC || 0)}</td></tr>
+                        <tr class="total-ttc"><td class="label">Total TTC</td><td class="value">${Utils.formatMoney(d.totalTTC || 0)}</td></tr>
                     </table>
                 </div>
 
                 <!-- NOTE -->
                 <p class="devis-note">*Hors fourniture et installation des modules photovoltaïques et de leurs structures de fixation (éléments déjà installés par le client)</p>
 
-                <!-- REMARQUES -->
-                ${d.remarques ? `<div class="remarks-section"><h4>📝 Remarques</h4><p>${Utils.escapeHtml(d.remarques)}</p></div>` : ''}
-
-                <!-- FOOTER: Two boxes -->
-                <div class="devis-footer-boxes">
-                    <div class="devis-footer-box">
-                        <h4>Coordonnées bancaires :</h4>
-                        <p>Banque : Crédit du Maroc</p>
-                        <p>Bénéficiaire : Eqnovia</p>
-                        <p>RIB : 021 780 0000 177030150208 49</p>
-                    </div>
-                    <div class="devis-footer-box devis-footer-signature">
-                        <p>Cachet, Date, Signature et mention "Bon pour Accord"</p>
-                    </div>
+                <!-- COORDONNÉES BANCAIRES -->
+                <div class="devis-bank">
+                    <p><strong>Coordonnées bancaires :</strong></p>
+                    <p>Banque : Crédit du Maroc</p>
+                    <p>Bénéficiaire : Eqnovia</p>
+                    <p>RIB : 021 780 0000 177030150208 49</p>
                 </div>
 
-                <!-- LEGAL FOOTER -->
+                <!-- SIGNATURE -->
+                <div class="devis-signature">
+                    <span>${Utils.escapeHtml(d.clientVille || company.ville || '')}</span>
+                    <span>Cachet, Date, Signature et mention "Bon pour Accord"</span>
+                </div>
+
+                <!-- PIED DE PAGE LÉGAL -->
                 <div class="devis-legal">
                     ${company.nom} S.A. - ${company.adresse} ${company.ville} - Capital : ${company.capital} - ICE : ${company.ice} - RC : ${company.rc} - IF : ${company.if} - N° Taxe Professionnelle : ${company.tp}
                 </div>
+                <div class="devis-page">Page 1 / 1</div>
 
                 <!-- ACTIONS -->
                 <div class="form-actions">
@@ -192,7 +185,7 @@ const Devis = {
                     ${factureExistante
                         ? `<button class="btn btn-success" onclick="Factures.voir(${factureExistante.id})">📋 Facture ${factureExistante.reference}</button>`
                         : d.statut === 'Refusé'
-                            ? `<button class="btn btn-danger" title="Devis refusé" disabled>📋 Convertir en Facture</button>`
+                            ? `<button class="btn btn-danger" title="Devis refusé : conversion impossible" disabled>📋 Convertir en Facture</button>`
                             : `<button class="btn btn-primary" onclick="Devis.convertirFacture(${d.id})">📋 Convertir en Facture</button>`}
                     <button class="btn btn-success" onclick="Devis.changerStatut(${d.id}, 'Confirmé')" ${d.statut === 'Confirmé' ? 'disabled' : ''}>✅ Confirmer</button>
                     <button class="btn btn-danger" onclick="Devis.changerStatut(${d.id}, 'Refusé')" ${d.statut === 'Refusé' ? 'disabled' : ''}>❌ Refuser</button>

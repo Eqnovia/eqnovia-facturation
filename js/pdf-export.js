@@ -44,7 +44,23 @@ const PdfExport = {
             author: company.nom,
             creator: `${company.nom} - Système de Facturation`,
             keywords: `${docType}, ${data.reference}, ${company.nom}`
-        });        doc.setDisplayMode('fullheight', 'continuous');
+        });
+        doc.setDisplayMode('fullheight', 'continuous');
+
+        // ===== DEVIS: completely custom layout matching model.pdf =====
+        if (docType === 'DEVIS') {
+            return this.generateDevisPDF(doc, data, company, pageWidth, pageHeight, margin, contentWidth);
+        }
+
+        // ===== FACTURE: completely custom layout matching FACTURE.pdf =====
+        if (docType === 'FACTURE') {
+            return this.generateFacturePDF(doc, data, company, pageWidth, pageHeight, margin, contentWidth);
+        }
+
+        // ===== BON DE COMMANDE: completely custom layout matching boncommend.pdf =====
+        if (docType === 'BON DE COMMANDE') {
+            return this.generateBonCommandePDF(doc, data, company, pageWidth, pageHeight, margin, contentWidth);
+        }
 
         // ===== TOP: Logo (left) + Title (right) =====
         try {
@@ -475,7 +491,10 @@ const PdfExport = {
             doc.setFont('helvetica', 'italic');
             doc.setFontSize(7.5);
             doc.setTextColor(100, 100, 100);
-            const noteText = '*Hors fourniture et installation des modules photovoltaïques et de leurs structures de fixation (éléments déjà installés par le client)';
+            // Note personnalisée : reprend la remarque du devis si renseignée, sinon le texte par défaut
+        const noteText = (data.remarques && data.remarques.trim())
+            ? data.remarques.trim()
+            : '*Hors fourniture et installation des modules photovoltaïques et de leurs structures de fixation (éléments déjà installés par le client)';
             const noteLines = doc.splitTextToSize(noteText, contentWidth);
             noteLines.forEach((line, idx) => {
                 doc.text(line, col1X, y + idx * 3.5);
@@ -814,6 +833,15 @@ const PdfExport = {
     },
 
     /**
+     * Préfixe une remarque d'une astérisque (une seule fois, même si déjà préfixée)
+     */
+    avecEtoile(text) {
+        const t = (text || '').trim();
+        if (!t) return '';
+        return t.startsWith('*') ? t : '* ' + t;
+    },
+
+    /**
      * Format number with French locale + espace entre les milliers
      * (les espaces insécables sont remplacés par des espaces normales pour la police PDF)
      */
@@ -872,5 +900,855 @@ const PdfExport = {
             dateValidite: doc.dateValidite ? Utils.formatDate(doc.dateValidite) : '',
             remarques: doc.remarques || '',
         };
+    },
+
+    /**
+     * DEVIS-specific PDF generation — réplique fidèle de model.pdf :
+     * titre DEVIS bleu à droite, logo en haut à gauche, panneau société gris + encadré client,
+     * dates/référence en 3 colonnes, Objet, bande d'en-tête de tableau grise, lignes séparées
+     * par des filets (sans bordures verticales), totaux surlignés à droite, note,
+     * deux encadrés (coordonnées bancaires / cachet-signature) et pied de page légal 2 lignes.
+     * Polices : Montserrat/Arial du modèle approchées par Helvetica (métrique proche).
+     */
+    generateDevisPDF(doc, data, company, pageWidth, pageHeight, margin, contentWidth) {
+        const LX = 14.7;                  // bord gauche du modèle (mm)
+        const RX = pageWidth - 13.5;      // bord droit du modèle (≈ 196.5 sur A4)
+        const CW = RX - LX;               // largeur utile ≈ 181.8
+        const BLACK = [0, 0, 0];
+        const GREY_TXT = [77, 77, 77];    // #4D4D4D : lignes du tableau, coordonnées bancaires
+        const C_PANEL = [242, 242, 242];  // #F2F2F2 : panneau société + cellule Total HT
+        const C_HEAD = [191, 191, 191];   // #BFBFBF : bande d'en-tête du tableau + filet pied de page
+        const C_SEP = [217, 217, 217];    // #D9D9D9 : séparateurs de lignes + cellule Total TTC
+        const C_BORDER = [166, 166, 166]; // #A6A6A6 : encadrés client / banque / cachet
+        const C_BLUE = [68, 114, 196];    // #4472C4 : titre DEVIS
+
+        const setF = (style, size, color) => {
+            doc.setFont('helvetica', style);
+            doc.setFontSize(size);
+            doc.setTextColor(color[0], color[1], color[2]);
+        };
+
+        // ===== LOGO (haut gauche) =====
+        try {
+            const logoBase64 = this.getLogoBase64();
+            if (logoBase64) doc.addImage(logoBase64, 'PNG', 16.0, 14.4, 58.6, 17.8, undefined, 'FAST');
+        } catch (e) {}
+
+        // ===== TITRE DEVIS (bleu, aligné à droite) =====
+        setF('bold', 19.68, C_BLUE);
+        doc.text('DEVIS', RX, 26.5, { align: 'right' });
+
+        // ===== PANNEAU SOCIÉTÉ (gris clair, gauche) =====
+        doc.setFillColor(C_PANEL[0], C_PANEL[1], C_PANEL[2]);
+        doc.rect(LX, 38.1, 93.7, 23.0, 'F');
+        setF('bold', 8.16, BLACK);
+        doc.text(company.nom || 'Eqnovia', 17.9, 43.4);
+        setF('normal', 8.16, BLACK);
+        doc.text(company.adresse || '20 rue Moussa Bnou Noussair', 17.9, 48.1);
+        doc.text(company.ville || 'Casablanca', 17.9, 53.0);
+        doc.text(company.website || 'www.eqnovia.ma', 17.9, 57.7);
+
+        // ===== ENCADRÉ CLIENT (droite, bordure fine, sans fond) =====
+        doc.setDrawColor(C_BORDER[0], C_BORDER[1], C_BORDER[2]);
+        doc.setLineWidth(0.25);
+        doc.rect(121.7, 38.0, 74.8, 22.9, 'S');
+        setF('bold', 8.16, BLACK);
+        doc.text(data.clientNom || '', 124.9, 43.4);
+        setF('normal', 8.16, BLACK);
+        let clientY = 48.1;
+        if (data.clientAdresse) {
+            const addrLines = doc.splitTextToSize(data.clientAdresse, 70);
+            addrLines.forEach(l => { doc.text(l, 124.9, clientY); clientY += 3.6; });
+        }
+        if (data.clientVille) {
+            clientY = Math.max(clientY, 53.0);
+            doc.text(data.clientVille, 124.9, clientY);
+            clientY += 4.9;
+        }
+        doc.text(`ICE : ${data.clientIce || '-'}`, 124.9, Math.max(clientY, 57.7));
+
+        // ===== DATES / RÉFÉRENCE (3 colonnes : libellé gras, valeur en dessous) =====
+        setF('bold', 8.16, BLACK);
+        doc.text('Date du devis :', 15.3, 69.3);
+        doc.text('Date de fin de validité :', 109.0, 69.3);
+        doc.text('Référence :', 171.7, 69.3);
+        setF('normal', 8.16, BLACK);
+        doc.text(data.date || '', 15.3, 74.3);
+        doc.text(data.dateValidite || '', 109.0, 74.3);
+        doc.text(data.reference || '', 171.7, 74.3);
+
+        // ===== OBJET =====
+        setF('bold', 8.16, BLACK);
+        doc.text('Objet', 15.3, 84.5);
+        setF('normal', 8.16, BLACK);
+        const objetLines = doc.splitTextToSize(` : ${data.objet || ''}`, RX - 23.6);
+        objetLines.forEach((l, i) => doc.text(l, 23.6, 84.5 + i * 4.9));
+
+        // ===== MENTION MONTANTS =====
+        setF('italic', 8.16, BLACK);
+        doc.text('Montants exprimés en Dhs', RX, 89.2, { align: 'right' });
+
+        // ===== TABLEAU : colonnes du modèle (sans bordures verticales) =====
+        const headY = 90.3, headH = 8.8;
+        const headCols = [
+            { label: 'Désignation', x: 17.8, left: true },
+            { label: '% TVA', x: 114.8 },
+            { label: 'Quantité', x: 129.4 },
+            { label: 'Unité', x: 143.2 },
+            { label: ['Prix unitaire', 'HT'], x: 158.4 },
+            { label: ['Prix total', 'HT'], x: 182.2 }
+        ];
+        const drawTableHeader = (top) => {
+            doc.setFillColor(C_HEAD[0], C_HEAD[1], C_HEAD[2]);
+            doc.rect(LX, top, CW, headH, 'F');
+            setF('bold', 8.16, BLACK);
+            headCols.forEach(c => {
+                if (Array.isArray(c.label)) {
+                    doc.text(c.label[0], c.x, top + 3.4, { align: 'center' });
+                    doc.text(c.label[1], c.x, top + 7.2, { align: 'center' });
+                } else {
+                    doc.text(c.label, c.x, top + 5.3, { align: c.left ? 'left' : 'center' });
+                }
+            });
+        };
+        drawTableHeader(headY);
+
+        const colDesX = 15.25, colDesW = 92;
+        const colTvaX = 114.8, colQtyX = 129.4, colUniteX = 143.2;
+        const colPuX = 169.1, colTotalX = 193.1;
+        const rowH = 6.7;
+        let y = headY + headH; // 99.1
+        setF('normal', 8.16, GREY_TXT);
+
+        let totalHT = 0, totalTVA = 0;
+        const lignes = data.lines || [];
+
+        lignes.forEach(line => {
+            const qty = line.quantite || 0;
+            const pu = line.prixUnitaire || 0;
+            const tvaRate = line.tva || 0;
+            const lineTotalHT = qty * pu;
+            totalHT += lineTotalHT;
+            totalTVA += lineTotalHT * tvaRate / 100;
+
+            // Saut de page : bande d'en-tête répétée sur la nouvelle page
+            if (y + rowH > 271.3) {
+                doc.addPage();
+                drawTableHeader(20);
+                y = 20 + headH;
+                setF('normal', 8.16, GREY_TXT);
+            }
+
+            // Désignation (renvoi à la ligne resserré comme dans le modèle)
+            const desLines = doc.splitTextToSize(line.designation || '', colDesW);
+            const n = Math.max(1, desLines.length);
+            const firstBase = y + (rowH - (n - 1) * 3.6) / 2 + 1.0;
+            desLines.forEach((l, i) => doc.text(l, colDesX, firstBase + i * 3.6));
+
+            // Autres colonnes, centrées verticalement dans la ligne
+            const midY = y + rowH / 2 + 1.0;
+            doc.text(`${tvaRate}%`, colTvaX, midY, { align: 'center' });
+            doc.text(`${qty}`, colQtyX, midY, { align: 'center' });
+            doc.text(line.unite || '', colUniteX, midY, { align: 'center' });
+            doc.text(this.formatNumber(pu), colPuX, midY, { align: 'right' });
+            doc.text(this.formatNumber(lineTotalHT), colTotalX, midY, { align: 'right' });
+
+            y += rowH;
+            // Filet de séparation sous la ligne
+            doc.setFillColor(C_SEP[0], C_SEP[1], C_SEP[2]);
+            doc.rect(LX, y - 0.25, CW, 0.25, 'F');
+        });
+
+        if (!lignes.length) {
+            totalHT = data.totalHT || 0;
+            totalTVA = data.totalTVA || 0;
+        }
+        const totalTTC = totalHT + totalTVA;
+
+        // ===== BLOC BAS : totaux + note + encadrés =====
+        // Note personnalisée : reprend la remarque du devis (préfixée d'une *) si renseignée, sinon le texte par défaut
+        const noteText = (data.remarques && data.remarques.trim())
+            ? this.avecEtoile(data.remarques)
+            : '*Hors fourniture et installation des modules photovoltaïques et de leurs structures de fixation (éléments déjà installés par le client)';
+        const noteLines = doc.splitTextToSize(noteText, CW);
+        const noteH = noteLines.length * 4.2;
+        const BOTTOM_NEED = 17.4 + 3.7 + noteH + 6.5 + 22.3;
+        let totalsY, noteY, boxesY;
+        if (y + 4 <= 216.2 && 216.2 + BOTTOM_NEED <= 277.3) {
+            // Ancrages exacts du modèle (page unique)
+            totalsY = 216.2; noteY = 237.9; boxesY = 248.7;
+        } else {
+            totalsY = y + 4;
+            if (totalsY + BOTTOM_NEED > 277.3) {
+                doc.addPage();
+                totalsY = 20;
+            }
+            noteY = totalsY + 17.4 + 3.7;
+            boxesY = noteY + noteH - 4.9 + 6.5;
+        }
+
+        // ===== TOTAUX (bloc droit : HT gris clair, TVA blanc, TTC gris) =====
+        const txX = 137.1, txW = 59.4, lblX = 145.8, valX = 193.2;
+        doc.setFillColor(C_PANEL[0], C_PANEL[1], C_PANEL[2]);
+        doc.rect(txX, totalsY, txW, 5.9, 'F');
+        doc.setFillColor(C_SEP[0], C_SEP[1], C_SEP[2]);
+        doc.rect(txX, totalsY + 10.6, txW, 7.0, 'F');
+        setF('bold', 8.16, BLACK);
+        doc.text('Total HT', lblX, totalsY + 3.9);
+        doc.text(this.formatNumber(totalHT), valX, totalsY + 3.9, { align: 'right' });
+        const tvaBaseY = totalsY + 5.9 + 4.7 / 2 + 1.0;
+        doc.text('Total TVA', lblX, tvaBaseY);
+        doc.text(this.formatNumber(totalTVA), valX, tvaBaseY, { align: 'right' });
+        doc.text('Total TTC', lblX, totalsY + 10.6 + 4.3);
+        doc.text(this.formatNumber(totalTTC), valX, totalsY + 10.6 + 4.3, { align: 'right' });
+
+        // ===== NOTE (sous les totaux) =====
+        setF('normal', 7.44, BLACK);
+        noteLines.forEach((l, i) => doc.text(l, 15.3, noteY + i * 4.2));
+
+        // ===== ENCADRÉS : COORDONNÉES BANCAIRES / CACHET-SIGNATURE =====
+        doc.setDrawColor(C_BORDER[0], C_BORDER[1], C_BORDER[2]);
+        doc.setLineWidth(0.25);
+        doc.rect(14.7, boxesY, 93.7, 22.3, 'S');
+        doc.rect(121.7, boxesY, 74.8, 22.3, 'S');
+        setF('bold', 8.16, BLACK);
+        doc.text('Coordonnées bancaires :', 17.8, boxesY + 3.9);
+        const bd = data.bankDetails || {
+            banque: 'Crédit du Maroc',
+            beneficiaire: company.nom || 'Eqnovia',
+            rib: '021 780 0000 177030150208 49'
+        };
+        setF('normal', 8.16, GREY_TXT);
+        doc.text(`Banque : ${bd.banque}`, 20.3, boxesY + 9.3);
+        doc.text(`Bénéficiaire : ${bd.beneficiaire}`, 20.3, boxesY + 14.8);
+        doc.text(`RIB : ${bd.rib}`, 20.3, boxesY + 20.3);
+        // Dans le modèle, la mention est juste AU-DESSUS de l'encadré droit (vide, réservé au cachet)
+        setF('normal', 8.16, BLACK);
+        doc.text('Cachet, Date, Signature et mention "Bon pour Accord"', 159.1, boxesY - 0.9, { align: 'center' });
+
+        // ===== PIED DE PAGE LÉGAL (toutes les pages) =====
+        const totalPages = doc.internal.getNumberOfPages();
+        for (let p = 1; p <= totalPages; p++) {
+            doc.setPage(p);
+            doc.setFillColor(C_HEAD[0], C_HEAD[1], C_HEAD[2]);
+            doc.rect(LX, 277.3, CW, 0.8, 'F');
+            setF('bold', 8.16, BLACK);
+            const footLine1 = `${company.nom || 'Eqnovia'} S.A. - ${company.adresse || '20 rue Moussa Bnou Noussair'} ${company.ville || 'Casablanca'} - Capital : ${company.capital || '2 000 000 Dhs'}`;
+            const footLine2 = `ICE : ${company.ice || '001445583000022'} - RC : ${company.rc || '236357'} - IF : ${company.if || '40397283'} - N° Taxe Professionnelle : ${company.tp || '35546302'}`;
+            doc.text(footLine1, (LX + RX) / 2, 283.0, { align: 'center' });
+            doc.text(footLine2, (LX + RX) / 2, 286.7, { align: 'center' });
+        }
+
+        return doc.output('blob');
+    },
+
+    /**
+     * FACTURE-specific PDF generation — réplique fidèle de FACTURE.pdf :
+     * titre FACTURE bleu en haut à droite, logo en haut à gauche, panneau société gris
+     * + encadré client, date/référence en 2 colonnes, Objet, bande d'en-tête de tableau
+     * grise ("Prix unitaire HT" / "Prix total HT"), lignes séparées par des filets,
+     * encadré bancaire à gauche + totaux surlignés à droite (Total TVA à X%),
+     * suivi des paiements éventuel, pied de page légal 2 lignes.
+     * Polices : Montserrat/Arial du modèle approchées par Helvetica (métrique proche).
+     */
+    async generateFacturePDF(doc, data, company, pageWidth, pageHeight, margin, contentWidth) {
+        const LX = 15.2;                  // bord gauche du modèle (mm)
+        const RX = 195.0;                 // bord droit du modèle (mm)
+        const CW = RX - LX;               // largeur utile ≈ 179.8
+        const BLACK = [0, 0, 0];
+        const GREY_TXT = [77, 77, 77];    // #4D4D4D : lignes du tableau, coordonnées bancaires
+        const C_PANEL = [242, 242, 242];  // #F2F2F2 : panneau société + cellule Total HT
+        const C_HEAD = [191, 191, 191];   // #BFBFBF : bande d'en-tête du tableau + filet pied de page
+        const C_SEP = [217, 217, 217];    // #D9D9D9 : séparateurs de lignes + cellule Total TTC
+        const C_BORDER = [166, 166, 166]; // #A6A6A6 : encadrés client / banque
+        const C_BLUE = [68, 114, 196];    // #4472C4 : titre FACTURE
+
+        const setF = (style, size, color) => {
+            doc.setFont('helvetica', style);
+            doc.setFontSize(size);
+            doc.setTextColor(color[0], color[1], color[2]);
+        };
+
+        // ===== LOGO (haut gauche) =====
+        try {
+            const logoBase64 = this.getLogoBase64();
+            if (logoBase64) doc.addImage(logoBase64, 'PNG', 16.5, 27.9, 58.6, 17.8, undefined, 'FAST');
+        } catch (e) {}
+
+        // ===== TITRE FACTURE (bleu, aligné à droite) =====
+        setF('bold', 19.68, C_BLUE);
+        doc.text('FACTURE', 159.1, 40.0);
+
+        // ===== PANNEAU SOCIÉTÉ (gris clair, gauche) =====
+        doc.setFillColor(C_PANEL[0], C_PANEL[1], C_PANEL[2]);
+        doc.rect(LX, 51.6, 89.5, 22.9, 'F');
+        setF('bold', 8.16, BLACK);
+        doc.text(company.nom || 'Eqnovia', 18.4, 56.8);
+        setF('normal', 8.16, BLACK);
+        doc.text(company.adresse || '20 rue Moussa Bnou Noussair', 18.4, 61.7);
+        doc.text(company.ville || 'Casablanca', 18.4, 66.4);
+        doc.text(company.website || 'www.eqnovia.ma', 18.4, 71.1);
+
+        // ===== ENCADRÉ CLIENT (droite, bordure fine, sans fond) =====
+        doc.setDrawColor(C_BORDER[0], C_BORDER[1], C_BORDER[2]);
+        doc.setLineWidth(0.25);
+        doc.rect(118.5, 51.5, 76.4, 23.0, 'S');
+        setF('bold', 8.16, BLACK);
+        doc.text(data.clientNom || '', 121.7, 56.8);
+        setF('normal', 8.16, BLACK);
+        let clientY = 61.7;
+        if (data.clientAdresse) {
+            const addrLines = doc.splitTextToSize(data.clientAdresse, 70);
+            addrLines.forEach(l => { doc.text(l, 121.7, clientY); clientY += 3.6; });
+        }
+        if (data.clientVille) {
+            clientY = Math.max(clientY, 66.4);
+            doc.text(data.clientVille, 121.7, clientY);
+            clientY += 4.7;
+        }
+        doc.text(`ICE : ${data.clientIce || '-'}`, 121.7, Math.max(clientY, 71.1));
+
+        // ===== DATE / RÉFÉRENCE (2 colonnes : libellé gras, valeur en dessous) =====
+        setF('bold', 8.16, BLACK);
+        doc.text('Date de facturation :', 15.8, 82.9);
+        doc.text('Référence :', 170.9, 82.9);
+        setF('normal', 8.16, BLACK);
+        doc.text(data.date || '', 15.8, 87.9);
+        doc.text(data.reference || '', 170.9, 87.9);
+
+        // ===== OBJET =====
+        setF('bold', 8.16, BLACK);
+        doc.text('Objet', 15.8, 98.5);
+        setF('normal', 8.16, BLACK);
+        const objetLines = doc.splitTextToSize(` : ${data.objet || ''}`, RX - 24.1);
+        objetLines.forEach((l, i) => doc.text(l, i === 0 ? 24.1 : 15.8, 98.5 + i * 4.6));
+
+        // ===== MENTION MONTANTS =====
+        setF('italic', 8.16, BLACK);
+        doc.text('Montants exprimés en Dhs', RX, 109.8, { align: 'right' });
+
+        // ===== TABLEAU : colonnes du modèle (sans bordures verticales) =====
+        const headY = 110.8, headH = 9.7;
+        const headCols = [
+            { label: 'Désignation', x: 18.3, align: 'left' },
+            { label: '% TVA', x: 110.7, align: 'center' },
+            { label: 'Quantité', x: 126.2, align: 'center' },
+            { label: 'Unité', x: 139.5, align: 'center' },
+            { label: 'Prix unitaire HT', x: 157.8, align: 'center' },
+            { label: ['Prix total', 'HT'], x: 182.7, align: 'center' }
+        ];
+        const drawTableHeader = (top) => {
+            doc.setFillColor(C_HEAD[0], C_HEAD[1], C_HEAD[2]);
+            doc.rect(LX, top, CW, headH, 'F');
+            setF('bold', 8.16, BLACK);
+            headCols.forEach(c => {
+                if (Array.isArray(c.label)) {
+                    doc.text(c.label[0], c.x, top + 4.1, { align: 'center' });
+                    doc.text(c.label[1], c.x, top + 7.8, { align: 'center' });
+                } else {
+                    doc.text(c.label, c.x, top + 5.9, { align: c.align });
+                }
+            });
+            // Filet sous la bande d'en-tête
+            doc.setFillColor(C_SEP[0], C_SEP[1], C_SEP[2]);
+            doc.rect(LX, top + headH - 0.25, CW, 0.25, 'F');
+        };
+        drawTableHeader(headY);
+
+        const colDesX = 15.8, colDesW = 90;
+        const colTvaX = 110.7, colQtyX = 126.2, colUniteX = 139.5;
+        const colPuX = 167.1, colTotalX = 192.0;
+        const rowBaseH = 7.9, lineStep = 3.6;
+        const ROW_LIMIT = 258;   // les lignes s'arrêtent avant le filet du pied de page (259.4)
+        let y = headY + headH + 0.05;
+        setF('normal', 8.16, GREY_TXT);
+
+        let totalHT = 0, totalTVA = 0;
+        const lignes = data.lines || [];
+
+        const rowHeight = (line) => {
+            const n = Math.max(1, doc.splitTextToSize(line.designation || '', colDesW).length);
+            return rowBaseH + (n - 1) * lineStep;
+        };
+
+        const drawRow = (line) => {
+            const qty = line.quantite || 0;
+            const pu = line.prixUnitaire || 0;
+            const tvaRate = line.tva || 0;
+            const lineTotalHT = qty * pu;
+            totalHT += lineTotalHT;
+            totalTVA += lineTotalHT * tvaRate / 100;
+
+            // Désignation (renvoi à la ligne resserré comme dans le modèle)
+            const desLines = doc.splitTextToSize(line.designation || '', colDesW);
+            const n = Math.max(1, desLines.length);
+            const rowH = rowBaseH + (n - 1) * lineStep;
+            const firstBase = y + (rowH - (n - 1) * lineStep) / 2 + 1.15;
+            desLines.forEach((l, i) => doc.text(l, colDesX, firstBase + i * lineStep));
+
+            // Autres colonnes, centrées verticalement dans la ligne
+            const midY = y + rowH / 2 + 1.15;
+            doc.text(`${tvaRate}%`, colTvaX, midY, { align: 'center' });
+            doc.text(`${qty}`, colQtyX, midY, { align: 'center' });
+            doc.text(line.unite || '', colUniteX, midY, { align: 'center' });
+            doc.text(this.formatNumber(pu), colPuX, midY, { align: 'right' });
+            doc.text(this.formatNumber(lineTotalHT), colTotalX, midY, { align: 'right' });
+
+            y += rowH;
+            // Filet de séparation sous la ligne
+            doc.setFillColor(C_SEP[0], C_SEP[1], C_SEP[2]);
+            doc.rect(LX, y - 0.25, CW, 0.25, 'F');
+        };
+
+        lignes.forEach(line => {
+            // Saut de page : bande d'en-tête répétée sur la nouvelle page
+            if (y + rowHeight(line) > ROW_LIMIT) {
+                doc.addPage();
+                drawTableHeader(20);
+                y = 20 + headH + 0.05;
+                setF('normal', 8.16, GREY_TXT);
+            }
+            drawRow(line);
+        });
+
+        if (!lignes.length) {
+            totalHT = data.totalHT || 0;
+            totalTVA = data.totalTVA || 0;
+        }
+        const totalTTC = totalHT + totalTVA;
+
+        // ===== BLOC BAS : encadré bancaire (gauche) + totaux (droite) =====
+        const paiements = data.paiements || [];
+        const hasPayments = paiements.length > 0;
+        let tvaLabel = 'Total TVA';
+        const ht = totalHT || data.totalHT || 0;
+        const tva = totalTVA || data.totalTVA || 0;
+        if (ht > 0 && tva > 0) {
+            const tvaRate = Math.round((tva / ht) * 100);
+            if (tvaRate > 0) tvaLabel = `Total TVA à ${tvaRate}%`;
+        }
+
+        const ROW = 6.85;                          // pas vertical des lignes de totaux
+        const bottomTop = hasPayments ? 228.2 - ROW : 228.2;  // ancrage du modèle (remonté si paiements)
+        let bt;
+        if (y + 2 <= bottomTop) {
+            bt = bottomTop;      // ancrages exacts du modèle (page unique)
+        } else {
+            doc.addPage();
+            bt = 30;             // bloc bas rejeté en haut de la page suivante
+        }
+
+        // ===== TOTAUX (bloc droit : HT gris clair, TVA blanc, TTC gris) =====
+        const txX = 133.3, txW = 61.7, lblX = 139.0, valX = 193.4;
+        doc.setFillColor(C_PANEL[0], C_PANEL[1], C_PANEL[2]);
+        doc.rect(txX, bt, txW, 6.9, 'F');
+        doc.setFillColor(C_SEP[0], C_SEP[1], C_SEP[2]);
+        doc.rect(txX, bt + 13.7, txW, 7.0, 'F');
+        setF('bold', 8.16, BLACK);
+        doc.text('Total HT', lblX, bt + 4.4);
+        doc.text(this.formatNumber(ht), valX, bt + 4.4, { align: 'right' });
+        doc.text(tvaLabel, lblX, bt + 11.25);
+        doc.text(this.formatNumber(tva), valX, bt + 11.25, { align: 'right' });
+        doc.text('Total TTC', lblX, bt + 18.2);
+        doc.text(this.formatNumber(totalTTC), valX, bt + 18.2, { align: 'right' });
+        if (hasPayments) {
+            const montantPaye = data.montantPaye || 0;
+            const reste = data.resteAPayer != null ? data.resteAPayer : Math.max(0, totalTTC - montantPaye);
+            setF('normal', 8.16, GREY_TXT);
+            doc.text('Montant payé', lblX, bt + 24.95);
+            doc.text(this.formatNumber(montantPaye), valX, bt + 24.95, { align: 'right' });
+            if (reste > 0) setF('bold', 8.16, BLACK); else setF('normal', 8.16, GREY_TXT);
+            doc.text('Reste à payer', lblX, bt + 31.8);
+            doc.text(this.formatNumber(reste), valX, bt + 31.8, { align: 'right' });
+        }
+
+        // ===== ENCADRÉ COORDONNÉES BANCAIRES (gauche) =====
+        doc.setDrawColor(C_BORDER[0], C_BORDER[1], C_BORDER[2]);
+        doc.setLineWidth(0.25);
+        doc.rect(LX, bt, 89.5, 27.8, 'S');
+        setF('bold', 8.16, BLACK);
+        doc.text('Coordonnées bancaires :', 18.3, bt + 4.4);
+        const bd = data.bankDetails || {
+            banque: 'Crédit du Maroc',
+            beneficiaire: company.nom || 'Eqnovia',
+            rib: '021 780 0000 177030150208 49'
+        };
+        setF('normal', 8.16, GREY_TXT);
+        doc.text(`Banque : ${bd.banque}`, 20.8, bt + 11.3);
+        doc.text(`Bénéficiaire : ${bd.beneficiaire}`, 20.8, bt + 18.2);
+        doc.text(`RIB : ${bd.rib}`, 20.8, bt + 25.2);
+
+        // ===== REMARQUES (optionnel) : en bas de la facture, préfixée d'une * =====
+        const remarqueTxt = this.avecEtoile(data.remarques);
+        if (remarqueTxt) {
+            const rmLines = doc.splitTextToSize(remarqueTxt, CW);
+            const rh = rmLines.length * 4.2;
+            setF('italic', 7.44, [100, 100, 100]);
+            if (bt > 100) {
+                // Bloc ancré en bas : remarque collée au-dessus du bloc des totaux
+                let ry = bt - 3 - rh;
+                if (ry < y + 3) ry = y + 3;                     // jamais au-dessus de la fin du tableau
+                if (ry + rh <= bt - 0.5) {
+                    rmLines.forEach((l, i) => doc.text(l, 15.8, ry + i * 4.2));
+                } else if (bt + 34.8 + rh <= 257.4) {              // sinon : sous le bloc des totaux si ça tient
+                    const ry2 = bt + 34.8;
+                    rmLines.forEach((l, i) => doc.text(l, 15.8, ry2 + i * 4.2));
+                }
+            } else {
+                // Bloc rejeté en haut de page : remarque sous le bloc
+                const ry = bt + 36;
+                rmLines.forEach((l, i) => doc.text(l, 15.8, ry + i * 4.2));
+            }
+        }
+
+        // ===== PIÈCES JOINTES (photos ajoutées à la facture) =====
+        const imageAttachments = [];
+        for (const a of (data.attachments || [])) {
+            if (!(a.type || '').startsWith('image/')) continue;
+            let dataUrl = a.dataUrl;
+            if (!dataUrl && a.storeKey) dataUrl = await AttachmentStore.getWithCloud(a.storeKey);
+            if (dataUrl) imageAttachments.push({ ...a, dataUrl });
+        }
+        if (imageAttachments.length > 0) {
+            doc.addPage();
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(14);
+            doc.setTextColor(0, 0, 0);
+            doc.text('Pièces jointes', margin, margin + 10);
+            let imgY = margin + 22;
+            for (const att of imageAttachments) {
+                try {
+                    const img = new Image();
+                    await new Promise((resolve, reject) => {
+                        img.onload = resolve;
+                        img.onerror = reject;
+                        img.src = att.dataUrl;
+                    });
+                    const maxW = contentWidth;
+                    const maxH = 200;
+                    const ratio = Math.min(maxW / img.width, maxH / img.height);
+                    const w = img.width * ratio;
+                    const h = img.height * ratio;
+                    if (imgY + h > pageHeight - 30) {
+                        doc.addPage();
+                        imgY = margin + 10;
+                    }
+                    const format = att.dataUrl.startsWith('data:image/png') ? 'PNG' : 'JPEG';
+                    doc.addImage(att.dataUrl, format, (pageWidth - w) / 2, imgY, w, h);
+                    imgY += h + 6;
+                } catch (e) {
+                    console.warn('Impossible d\'ajouter la pièce jointe au PDF:', e);
+                }
+            }
+        }
+
+        // ===== PIED DE PAGE LÉGAL (toutes les pages) =====
+        const totalPages = doc.internal.getNumberOfPages();
+        for (let p = 1; p <= totalPages; p++) {
+            doc.setPage(p);
+            doc.setFillColor(C_HEAD[0], C_HEAD[1], C_HEAD[2]);
+            doc.rect(LX, 259.4, CW, 0.8, 'F');
+            setF('bold', 8.16, BLACK);
+            const footLine1 = `${company.nom || 'Eqnovia'} S.A. - ${company.adresse || '20 rue Moussa Bnou Noussair'} ${company.ville || 'Casablanca'} - Capital : ${company.capital || '2 000 000 Dhs'}`;
+            const footLine2 = `ICE : ${company.ice || '001445583000022'} - RC : ${company.rc || '236357'} - IF : ${company.if || '40397283'} - N° Taxe Professionnelle : ${company.tp || '35546302'}`;
+            doc.text(footLine1, (LX + RX) / 2, 267.0, { align: 'center' });
+            doc.text(footLine2, (LX + RX) / 2, 270.7, { align: 'center' });
+        }
+
+        return doc.output('blob');
+    },
+
+    /**
+     * BON DE COMMANDE — réplique fidèle de boncommend.pdf :
+     * titre bleu en haut à droite, logo en haut à gauche, panneau société gris
+     * + encadré client, date/référence en 2 colonnes, bande d'en-tête de tableau
+     * grise, lignes séparées par des filets, cachet dans la zone vide du tableau,
+     * totaux surlignés à droite (HT gris clair / TVA blanc / TTC gris),
+     * pied de page légal 2 lignes. Pas d'encadré bancaire ni de zone signature
+     * (conforme au modèle).
+     * Polices : Montserrat/Arial du modèle approchées par Helvetica (métrique proche).
+     */
+    async generateBonCommandePDF(doc, data, company, pageWidth, pageHeight, margin, contentWidth) {
+        const LX = 18.7;                  // bord gauche du modèle (mm)
+        const RX = 189.0;                 // bord droit du modèle (mm)
+        const CW = RX - LX;               // largeur utile = 170.3
+        const BLACK = [0, 0, 0];
+        const GREY_TXT = [77, 77, 77];    // #4D4D4D : lignes du tableau
+        const C_PANEL = [242, 242, 242];  // #F2F2F2 : panneau société + cellule Total HT
+        const C_HEAD = [191, 191, 191];   // #BFBFBF : bande d'en-tête + filet pied de page
+        const C_SEP = [217, 217, 217];    // #D9D9D9 : séparateurs de lignes + cellule Total TTC
+        const C_BORDER = [166, 166, 166]; // #A6A6A6 : encadré client
+        const C_BLUE = [68, 114, 196];    // #4472C4 : titre
+
+        const setF = (style, size, color) => {
+            doc.setFont('helvetica', style);
+            doc.setFontSize(size);
+            doc.setTextColor(color[0], color[1], color[2]);
+        };
+
+        // ===== LOGO (haut gauche) =====
+        try {
+            const logoBase64 = this.getLogoBase64();
+            if (logoBase64) doc.addImage(logoBase64, 'PNG', 20.0, 24.2, 58.6, 17.5, undefined, 'FAST');
+        } catch (e) {}
+
+        // ===== TITRE (bleu, aligné à droite) =====
+        setF('bold', 19.2, C_BLUE);
+        doc.text('BON DE COMMANDE', 186.0, 36.1, { align: 'right' });
+
+        // ===== PANNEAU SOCIÉTÉ (gris clair, gauche) =====
+        doc.setFillColor(C_PANEL[0], C_PANEL[1], C_PANEL[2]);
+        doc.rect(LX, 47.5, 79.0, 22.5, 'F');
+        setF('bold', 8.16, BLACK);
+        doc.text(company.nom || 'Eqnovia', 22.1, 52.6);
+        setF('normal', 8.16, BLACK);
+        doc.text(company.adresse || '20 rue Moussa Bnou Noussair', 22.0, 57.4);
+        doc.text(company.ville || 'Casablanca', 22.0, 62.1);
+        doc.text(company.website || 'www.eqnovia.ma', 22.0, 66.8);
+
+        // ===== ENCADRÉ CLIENT (droite, bordure fine, sans fond) =====
+        doc.setDrawColor(C_BORDER[0], C_BORDER[1], C_BORDER[2]);
+        doc.setLineWidth(0.25);
+        doc.rect(114.1, 47.4, 75.1, 22.7, 'S');
+        setF('bold', 8.16, BLACK);
+        doc.text(data.clientNom || '', 117.6, 52.6);
+        setF('normal', 8.16, BLACK);
+        let clientY = 57.4;
+        if (data.clientAdresse) {
+            const addrLines = doc.splitTextToSize(data.clientAdresse, 69);
+            addrLines.forEach(l => { doc.text(l, 117.5, clientY); clientY += 3.6; });
+        }
+        if (data.clientVille) {
+            clientY = Math.max(clientY, 62.1);
+            doc.text(data.clientVille, 117.5, clientY);
+            clientY += 4.7;
+        }
+        doc.text(`ICE : ${data.clientIce || '-'}`, 117.5, Math.max(clientY, 66.8));
+
+        // ===== DATE / RÉFÉRENCE (2 colonnes : libellé gras, valeur en dessous) =====
+        setF('bold', 8.16, BLACK);
+        doc.text('Date de commande :', 19.4, 78.4);
+        doc.text('Référence :', 166.1, 78.4);
+        setF('normal', 8.16, BLACK);
+        doc.text(data.date || '', 19.4, 83.3);
+        doc.text(data.reference || '', 166.0, 83.3);
+
+        // ===== OBJET / DATE DE LIVRAISON (le modèle réserve cette zone vide) =====
+        let zoneY = 89.0;
+        if (data.dateLivraison) {
+            setF('normal', 8.16, BLACK);
+            doc.text(`Date de livraison : ${data.dateLivraison}`, 19.4, zoneY);
+            zoneY += 5.5;
+        }
+        if (data.objet) {
+            setF('bold', 8.16, BLACK);
+            doc.text('Objet', 19.4, zoneY);
+            setF('normal', 8.16, BLACK);
+            const objetLines = doc.splitTextToSize(` : ${data.objet}`, RX - 28.3);
+            objetLines.forEach((l, i) => doc.text(l, i === 0 ? 28.3 : 19.4, zoneY + i * 4.6));
+        }
+
+        // ===== MENTION MONTANTS =====
+        setF('italic', 8.16, BLACK);
+        doc.text('Montants exprimés en Dhs', 184.6, 104.4, { align: 'right' });
+
+        // ===== TABLEAU : colonnes du modèle (sans bordures verticales) =====
+        const headY = 105.4, headH = 7.0;
+        const headCols = [
+            { label: 'Désignation', x: 58.2, align: 'center' },
+            { label: '% TVA', x: 106.0, align: 'center' },
+            { label: 'Quantité', x: 122.35, align: 'center' },
+            { label: 'Unité', x: 136.5, align: 'center' },
+            { label: 'Prix unitaire HT', x: 150.7, align: 'center' },
+            { label: ['Prix total', 'HT'], x: 177.15, align: 'center' }
+        ];
+        const drawTableHeader = (top) => {
+            doc.setFillColor(C_HEAD[0], C_HEAD[1], C_HEAD[2]);
+            doc.rect(LX, top, CW, headH, 'F');
+            setF('bold', 8.16, BLACK);
+            headCols.forEach(c => {
+                if (Array.isArray(c.label)) {
+                    doc.text(c.label[0], c.x, top + 2.7, { align: 'center' });
+                    doc.text(c.label[1], c.x, top + 6.3, { align: 'center' });
+                } else {
+                    doc.text(c.label, c.x, top + 4.5, { align: c.align });
+                }
+            });
+            // Filet sous la bande d'en-tête
+            doc.setFillColor(C_SEP[0], C_SEP[1], C_SEP[2]);
+            doc.rect(LX, top + headH - 0.25, CW, 0.25, 'F');
+        };
+        drawTableHeader(headY);
+
+        const colDesX = 19.3, colDesW = 76;
+        const colTvaX = 106.0, colQtyX = 122.4, colUniteX = 136.5;
+        const colPuX = 163.8, colTotalX = 187.3;
+        const rowBaseH = 7.3, lineStep = 3.4;
+        const ROW_LIMIT = 222.6;  // les lignes s'arrêtent avant le bloc des totaux (224.6)
+        let y = headY + headH + 0.05;
+        setF('normal', 8.16, GREY_TXT);
+
+        let totalHT = 0, totalTVA = 0;
+        const lignes = data.lines || [];
+
+        const rowHeight = (line) => {
+            const n = Math.max(1, doc.splitTextToSize(line.designation || '', colDesW).length);
+            return rowBaseH + (n - 1) * lineStep;
+        };
+
+        const drawRow = (line) => {
+            const qty = line.quantite || 0;
+            const pu = line.prixUnitaire || 0;
+            const tvaRate = line.tva || 0;
+            const lineTotalHT = qty * pu;
+            totalHT += lineTotalHT;
+            totalTVA += lineTotalHT * tvaRate / 100;
+
+            // Désignation (renvoi à la ligne resserré comme dans le modèle)
+            const desLines = doc.splitTextToSize(line.designation || '', colDesW);
+            const n = Math.max(1, desLines.length);
+            const rowH = rowBaseH + (n - 1) * lineStep;
+            const firstBase = y + (rowH - (n - 1) * lineStep) / 2 - 0.65;
+            desLines.forEach((l, i) => doc.text(l, colDesX, firstBase + i * lineStep));
+
+            // Autres colonnes, centrées verticalement dans la ligne
+            const midY = y + rowH / 2 - 0.65;
+            doc.text(`${tvaRate}%`, colTvaX, midY, { align: 'center' });
+            doc.text(`${qty}`, colQtyX, midY, { align: 'center' });
+            doc.text(line.unite || '', colUniteX, midY, { align: 'center' });
+            doc.text(this.formatNumber(pu), colPuX, midY, { align: 'right' });
+            doc.text(this.formatNumber(lineTotalHT), colTotalX, midY, { align: 'right' });
+
+            y += rowH;
+            // Filet de séparation sous la ligne
+            doc.setFillColor(C_SEP[0], C_SEP[1], C_SEP[2]);
+            doc.rect(LX, y - 0.25, CW, 0.25, 'F');
+        };
+
+        lignes.forEach(line => {
+            // Saut de page : bande d'en-tête répétée sur la nouvelle page
+            if (y + rowHeight(line) > ROW_LIMIT) {
+                doc.addPage();
+                drawTableHeader(20);
+                y = 20 + headH + 0.05;
+                setF('normal', 8.16, GREY_TXT);
+            }
+            drawRow(line);
+        });
+
+        if (!lignes.length) {
+            totalHT = data.totalHT || 0;
+            totalTVA = data.totalTVA || 0;
+        }
+        const totalTTC = totalHT + totalTVA;
+
+        // ===== BLOC BAS : totaux à droite (ancrage du modèle : 224.6) =====
+        let bt;
+        if (y + 2 <= 224.6) {
+            bt = 224.6;          // ancrage exact du modèle (page unique)
+        } else {
+            doc.addPage();
+            bt = 30;             // bloc bas rejeté en haut de la page suivante
+        }
+
+        const txX = 130.6, txW = 58.5, lblX = 131.2, valX = 189.4;
+        doc.setFillColor(C_PANEL[0], C_PANEL[1], C_PANEL[2]);
+        doc.rect(txX, bt, txW, 6.9, 'F');
+        doc.setFillColor(C_SEP[0], C_SEP[1], C_SEP[2]);
+        doc.rect(txX, bt + 13.7, txW, 6.9, 'F');
+        setF('bold', 8.16, BLACK);
+        doc.text('Total HT', lblX, bt + 4.3);
+        doc.text(this.formatNumber(totalHT), valX, bt + 4.3, { align: 'right' });
+        doc.text('Total TVA', lblX, bt + 11.15);
+        doc.text(this.formatNumber(totalTVA), valX, bt + 11.15, { align: 'right' });
+        doc.text('Total TTC', lblX, bt + 18.0);
+        doc.text(this.formatNumber(totalTTC), valX, bt + 18.0, { align: 'right' });
+
+        // ===== CACHET dans la zone vide du tableau (position du modèle) =====
+        if (bt === 224.6 && y + 2 <= 190.5) {
+            try {
+                const stampBase64 = this.getStampBase64();
+                if (stampBase64) {
+                    doc.addImage(stampBase64, 'PNG', 97.4, 190.5, 48.7, 24.3, undefined, 'FAST');
+                }
+            } catch (e) {}
+        }
+
+        // ===== REMARQUES (optionnel) : en bas du bon de commande, préfixée d'une * =====
+        const remarqueTxt = this.avecEtoile(data.remarques);
+        if (remarqueTxt) {
+            const rmLines = doc.splitTextToSize(remarqueTxt, CW);
+            const rh = rmLines.length * 4.2;
+            setF('italic', 7.44, [100, 100, 100]);
+            if (bt > 100) {
+                // Zone blanche entre le bloc des totaux (fin 245.2) et le filet du pied de page (263.5)
+                let ry = 263.5 - 2.5 - rh;
+                if (ry < y + 3) ry = Math.max(y + 3, 246.5);
+                if (ry + rh <= 263.0) {
+                    rmLines.forEach((l, i) => doc.text(l, LX + 0.6, ry + i * 4.2));
+                }
+            } else {
+                // Bloc rejeté en haut de page : remarque sous le bloc
+                const ry = bt + 27.6 + 4;
+                rmLines.forEach((l, i) => doc.text(l, LX + 0.6, ry + i * 4.2));
+            }
+        }
+
+        // ===== PIÈCES JOINTES (photos ajoutées au bon de commande) =====
+        const imageAttachments = [];
+        for (const a of (data.attachments || [])) {
+            if (!(a.type || '').startsWith('image/')) continue;
+            let dataUrl = a.dataUrl;
+            if (!dataUrl && a.storeKey) dataUrl = await AttachmentStore.getWithCloud(a.storeKey);
+            if (dataUrl) imageAttachments.push({ ...a, dataUrl });
+        }
+        if (imageAttachments.length > 0) {
+            doc.addPage();
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(14);
+            doc.setTextColor(0, 0, 0);
+            doc.text('Pièces jointes', margin, margin + 10);
+            let imgY = margin + 22;
+            for (const att of imageAttachments) {
+                try {
+                    const img = new Image();
+                    await new Promise((resolve, reject) => {
+                        img.onload = resolve;
+                        img.onerror = reject;
+                        img.src = att.dataUrl;
+                    });
+                    const maxW = contentWidth;
+                    const maxH = 200;
+                    const ratio = Math.min(maxW / img.width, maxH / img.height);
+                    const w = img.width * ratio;
+                    const h = img.height * ratio;
+                    if (imgY + h > pageHeight - 30) {
+                        doc.addPage();
+                        imgY = margin + 10;
+                    }
+                    const format = att.dataUrl.startsWith('data:image/png') ? 'PNG' : 'JPEG';
+                    doc.addImage(att.dataUrl, format, (pageWidth - w) / 2, imgY, w, h);
+                    imgY += h + 6;
+                } catch (e) {
+                    console.warn('Impossible d\'ajouter la pièce jointe au PDF:', e);
+                }
+            }
+        }
+
+        // ===== PIED DE PAGE LÉGAL (toutes les pages) =====
+        const totalPages = doc.internal.getNumberOfPages();
+        for (let p = 1; p <= totalPages; p++) {
+            doc.setPage(p);
+            doc.setFillColor(C_HEAD[0], C_HEAD[1], C_HEAD[2]);
+            doc.rect(LX, 263.5, CW, 0.8, 'F');
+            setF('bold', 8.16, BLACK);
+            const footLine1 = `${company.nom || 'Eqnovia'} S.A. - ${company.adresse || '20 rue Moussa Bnou Noussair'} ${company.ville || 'Casablanca'} - Capital : ${company.capital || '2 000 000 Dhs'}`;
+            const footLine2 = `ICE : ${company.ice || '001445583000022'} - RC : ${company.rc || '236357'} - IF : ${company.if || '40397283'} - N° Taxe Professionnelle : ${company.tp || '35546302'}`;
+            doc.text(footLine1, (LX + RX) / 2, 270.8, { align: 'center' });
+            doc.text(footLine2, (LX + RX) / 2, 274.4, { align: 'center' });
+        }
+
+        return doc.output('blob');
     }
+
 };
